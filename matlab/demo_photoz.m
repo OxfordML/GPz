@@ -22,8 +22,8 @@ decorrelate = true;         % preprocess the data using PCA [default=true]
 
 %%%%%%%%%%%%%% Training options %%%%%%%%%%%%%%%%  
 dataPath = '../data/sdss_sample.csv';   % path to the data set, has to be in the following format m_1,m_2,..,m_k,e_1,e_2,...,e_k,z_spec
-                                        % where m_i is the i-th magnitude, e_i is its associated uncertainty and z_spec is the spectroscopic redshift
-                                        % [required]
+                                % where m_i is the i-th magnitude, e_i is its associated uncertainty and z_spec is the spectroscopic redshift
+                                % [required]
                                 
 maxIter = 500;                  % maximum number of iterations [default=200]
 maxAttempts = 50;               % maximum iterations to attempt if there is no progress on the validation set [default=infinity]
@@ -62,7 +62,7 @@ model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',he
 model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts);
 
 %%%%%%%% NOTE %%%%%%%
-% you can train the model gain, eve using different data, by executing:
+% you can train the model again, even using different data, by executing:
 % model = train(model,X,Y,options);
 
 % use the model to generate predictions for the test set
@@ -107,5 +107,5 @@ figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel(
 [centers,means,stds] = bin(Y(testing),sqrt(noiseV),20);
 figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel('Noise Uncertainty');
 
-% save output as a comma seperated values (mean,sigma,model_variance,noise_variance)
+% save output as comma seperated values (mean,sigma,model_variance,noise_variance)
 csvwrite([method,'_',num2str(m),'_',csl_method,'.csv'],[Y(testing) mu sigma modelV noiseV]);
