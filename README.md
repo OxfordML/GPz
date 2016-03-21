@@ -26,11 +26,12 @@ This option allows for input-dependent noise estimation. The noise process is al
 
 ## Getting Started
 
-### Matlab:
+### Requirements
+#### Matlab:
 
 Download the [minFunc](https://www.cs.ubc.ca/~schmidtm/Software/minFunc_2012.zip) optimization package 
 
-### Python:
+#### Python:
 
   - **scipy**
   - **numpy**
@@ -42,7 +43,7 @@ To install, type the following in the command line:
 pip install package_name
 ```
 
-## Running:
+### Running:
 
 There are two starter codes available:
 
