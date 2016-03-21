@@ -12,13 +12,19 @@ This is a Matlab and a python implementations of the methods described in [Almos
   - **Variable Covariance (GC)**: Each basis has a specific full covariance.
 
 ### Joint Linear Prior Optimization
-The models allows for an optional linear prior optimization, i.e. the data is genererated by 
-## Terminolog
-  - **Joint**: 
-  - **numpy**
-  - **matplotlib**
-  - **sklearn**
-## Requirements:
+The models allows for an optional linear prior optimization as descried in [Almosallamet. al 2016](https://mnras.oxfordjournals.org/content/455/3/2387.abstract?related-urls=yes&legid=mnras;455/3/2387), i.e. the prior mean on the generative function is a linear combination of the raw input instead of a constant or simply zero. This has the effect that in extrapolation regions, the model will fall back to the general linear trend the data rather than falling back to zero.
+
+### Cost Sensitive learning
+The model allows for a supplementary input vector to weigh samples differently during optimization. For example, the weights of the samples can be assigned according to their frequency to weigh outliers more aggressively. There are three built-in options available:
+
+  - **normal**: All samples are equally important 
+  - **balanced**: Groups the samples into bins of width ‘binWidth’ and assigns a weight to each sample that is the reciprocal of its frequency in its bin
+  - **normalized**: This is a photo-z specific weighting scheme that weighs each sample according to its spectroscopic redshift as 1/(1+z)
+
+### Heterosccedastic Noise
+This option allows for input-dependent noise estimation. The noise process is also modeled as a linear combination of the basis functions. If disabled, the model assumed a global Gaussian noise variance. If only interested in point estimates, this feature can be disabled to speedup the optimization process and to minimize the number of basis functions required
+
+## Getting Started
 
 ### Matlab:
 
