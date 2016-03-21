@@ -1,7 +1,8 @@
+import GPz
 from numpy import *
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
-import GPz
+
 
 ########### Model options ###############
 
@@ -29,7 +30,7 @@ dataPath = '../data/sdss_sample.csv'    # path to the data set, has to be in the
                                         # [required]
 
 maxIter = 500                  # maximum number of iterations [default=200]
-
+maxAttempts = 50              # maximum iterations to attempt if there is no progress on the validation set [default=infinity]
 trainSplit = 0.2               # percentage of data to use for training
 validSplit = 0.2               # percentage of data to use for validation
 testSplit  = 0.6               # percentage of data to use for testing
@@ -39,12 +40,9 @@ testSplit  = 0.6               # percentage of data to use for testing
 # read data from file
 data = loadtxt(open(dataPath,"rb"),delimiter=",")
 
-n = len(data)
-
 X = data[:, 0:10]
-Y = data[:, 10].reshape(n, 1)
-
 n,d = X.shape
+Y = data[:, 10].reshape(n, 1)
 
 filters = d/2
 
@@ -52,26 +50,27 @@ filters = d/2
 X[:, filters:] = log(X[:, filters:])
 
 # sample training, validation and testing sets from the data
-training,validation,testing = GPz.split(n,trainSplit,validSplit,testSplit);
+training,validation,testing = GPz.sample(n,trainSplit,validSplit,testSplit)
 
-# you can also sample by percentage for example
-# training,validation,testing = GPz.sample(n,10000,10000,10000);
+# you can also select the size of each sample
+# training,validation,testing = GPz.sample(n,10000,10000,10000)
 
 # get the weights for cost-sensitive learning
 omega = GPz.getOmega(Y, method=csl_method)
 
+
 # initialize the initial model
-model = GPz.init(X.copy(), Y.copy(), method,m, omega=omega, training=training,heteroscedastic=heteroscedastic,joint=joint,decorrelate=decorrelate)
+model = GPz.GP(m,method=method,joint=joint,heteroscedastic=heteroscedastic,decorrelate=decorrelate)
 
 # train the model
-model = GPz.train(model, X.copy(), Y.copy(), omega=omega, training=training, validation=validation, maxIter=maxIter)
+model.train(X.copy(), Y.copy(), omega=omega, training=training, validation=validation, maxIter=maxIter, maxAttempts=maxAttempts)
 
 ########### NOTE ###########
 # you can train the model gain, eve using different data, by executing:
-# model = train(model,X,Y,options)
+# model.train(model,X,Y,options)
 
 # use the model to generate predictions for the test set
-mu,sigma,modelV,noiseV,_ = GPz.predict(X[testing,:].copy(), model)
+mu,sigma,modelV,noiseV,_ = model.predict(X[testing,:].copy())
 
 
 ########### Display Results ###########

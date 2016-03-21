@@ -26,20 +26,22 @@ Y = 10*sinc(2*X) + random.randn(n, 1) * f_noise
 ########### Start Script ###########
 
 # optain an initial model using the default options
-model = GPz.init(X.copy(), Y.copy(), method,m)
+model = GPz.GP(m,method=method)
 
 # train the model using the default options
-model = GPz.train(model, X.copy(), Y.copy())
+model.train(X,Y)
 
 # use the model to generate predictions for the test set
-mu,sigma,variance,noise,PHI = GPz.predict(Xs.copy(), model)
+mu,sigma,variance,noise,PHI = model.predict(Xs)
 
 ########### Display Results ###########
 
 plt.fill_between(Xs[:,0], mu[:,0]-2 * sqrt(sigma[:,0]), mu[:,0]+2 * sqrt(sigma[:,0]),facecolor=(0.85, 0.85, 0.85))
 plt.plot(X, Y, 'b.')
 
-theta,m,w,SIGMAi, method, joint,heteroscedastic, decorrelate, muY, pca = model
+SIGMAi = model.SIGMAi
+muY = model.muY
+w = model.w
 
 [U,S,V] = svd(SIGMAi)
 R = dot(U,diag(sqrt(S)))

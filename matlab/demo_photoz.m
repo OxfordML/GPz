@@ -49,7 +49,7 @@ X(:,filters+1:end) = log(X(:,filters+1:end));
 % sample training, validation and testing sets from the data
 [training,validation,testing] = split(n,trainSplit,validSplit,testSplit); 
 
-% you can also sample by percentage for example
+% you can also select the size of each sample
 %[training,validation,testing] = sample(n,10000,10000,10000);
 
 % get the weights for cost-sensitive learning

@@ -8,6 +8,11 @@ defaults =  { true               true    false          ones(n,1)   true(n,1)};
 
 [heteroscedastic,joint,decorrelate,omega,training]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
 
+model.m = m;
+model.method = method;
+model.joint = joint;
+model.heteroscedastic = heteroscedastic;
+
 muY = mean(Y(training,:));
 
 Y = Y-muY;
@@ -62,7 +67,7 @@ switch(method)
         end
 end
 
-f = @(params) GPz(params,method,m,X,Y,omega,joint,heteroscedastic,training,[]);
+f = @(params) GPz(params,model,X,Y,omega,training,[]);
 
 theta = [P(:);GAMMA(:);lnAlpha(:);b];
 
@@ -96,12 +101,7 @@ best.LL = -inf;
 model.last = last;
 model.best = best;
 
-model.method = method;
-model.joint = joint;
-model.heteroscedastic = heteroscedastic;
-
 model.d = d;
-model.m = m;
 model.muX = muX;
 model.T = T;
 model.Ti = Ti;

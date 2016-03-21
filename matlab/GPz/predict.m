@@ -6,21 +6,15 @@ function [pred,sigma,modelV,noiseV,PHI] = predict(X,model,whichSet)
         set = model.last;
     end
     
-    method = model.method;
-    
     theta = set.theta;
     w = set.w;
     SIGMAi = set.SIGMAi;
     
-    joint = model.joint;
-    heteroscedastic = model.heteroscedastic;
     muY = model.muY;
-    
-    m = model.m;
     
     X = bsxfun(@minus,X,model.muX)*model.T;
     
-    [~,~,~,~,PHI,lnBeta] = GPz(theta,method,m,X,[],[],joint,heteroscedastic,[],[]);
+    [~,~,~,~,PHI,lnBeta] = GPz(theta,model,X,[],[],[],[]);
     
     pred = PHI*w+muY;
 

@@ -8,9 +8,6 @@ global best_theta
 best_theta = model.best.theta;
 best_valid = model.best.LL;
 
-method = model.method;
-joint = model.joint;
-heteroscedastic = model.heteroscedastic;
 theta = model.last.theta;
 muY = model.muY;
 muX = model.muX;
@@ -28,7 +25,7 @@ X = bsxfun(@minus,X,muX)*T;
 
 Y = Y-muY;
 
-f = @(params) GPz(params,method,m,X,Y,omega,joint,heteroscedastic,training,validation);
+f = @(params) GPz(params,model,X,Y,omega,training,validation);
 
 options.method = 'lbfgs';
 options.display = 'off';

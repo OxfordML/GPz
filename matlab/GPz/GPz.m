@@ -1,4 +1,10 @@
-function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,method,m,X,Y,omega,joint,heteroscedastic,training,validation)
+function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,model,X,Y,omega,training,validation)
+
+
+m = model.m;
+method = model.method;
+joint = model.joint;
+heteroscedastic = model.heteroscedastic;
 
 global trainRMSE
 global trainLL
