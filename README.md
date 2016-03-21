@@ -12,7 +12,7 @@ This is a Matlab and a python implementations of the methods described in [Almos
   - **Variable Covariance (GC)**: Each basis has a specific full covariance.
 
 ### Joint Linear Prior Optimization
-The models allows for an optional linear prior optimization as descried in [Almosallamet. al 2016](https://mnras.oxfordjournals.org/content/455/3/2387.abstract?related-urls=yes&legid=mnras;455/3/2387), i.e. the prior mean on the generative function is a linear combination of the raw input instead of a constant or simply zero. This has the effect that in extrapolation regions, the model will fall back to the general linear trend the data rather than falling back to zero.
+The models allows for an optional linear prior optimization as descried in [Almosallamet et. al 2016](https://mnras.oxfordjournals.org/content/455/3/2387.abstract?related-urls=yes&legid=mnras;455/3/2387), i.e. the prior mean on the generative function is a linear combination of the raw input instead of a constant or simply zero. This has the effect that in extrapolation regions, the model will fall back to the general linear trend the data rather than falling back to zero.
 
 ### Cost Sensitive learning
 The model allows for a supplementary input vector to weigh samples differently during optimization. For example, the weights of the samples can be assigned according to their frequency to weigh outliers more aggressively. There are three built-in options available:
