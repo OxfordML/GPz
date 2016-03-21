@@ -1,5 +1,11 @@
 function [training,validation,testing] = sample(n,trainSample,validSample,testSample)
 
+    if(trainSample<1)
+        validSsample = ceil(n*validSample);
+        testSample  = ceil(n*testSample);
+        trainSample = min(ceil(n*trainSample),n-testSample-validSsample);
+    end
+
     r = randperm(n);
 
     validation = false(n,1);

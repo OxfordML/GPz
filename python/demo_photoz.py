@@ -50,10 +50,10 @@ filters = d/2
 X[:, filters:] = log(X[:, filters:])
 
 # sample training, validation and testing sets from the data
-training,validation,testing = GPz.sample(n,trainSplit,validSplit,testSplit)
+# training,validation,testing = GPz.sample(n,trainSplit,validSplit,testSplit)
 
 # you can also select the size of each sample
-# training,validation,testing = GPz.sample(n,10000,10000,10000)
+training,validation,testing = GPz.sample(n,10000,10000,10000)
 
 # get the weights for cost-sensitive learning
 omega = GPz.getOmega(Y, method=csl_method)

@@ -12,7 +12,6 @@ theta = model.last.theta;
 muY = model.muY;
 muX = model.muX;
 T = model.T;
-m = model.m;
 
 n = size(X,1);
 
