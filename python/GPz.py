@@ -551,7 +551,7 @@ class GP:
                 print  '{0:4s}\t{1:9s}\t\t{2:9s}\t\t{3:9s}\t\t{4:9s}\t\t{5:9s}\t\t{6:9s}'.format('Iter', ' logML/n', ' trainRMSE',
                                                                                    ' trainRMSE/n', ' validRMSE', ' validLL', ' Time')
         if self.validLL is None:
-            print '{0:4d}\t{1: 1.7e}\t{2: 1.7e}\t{3: 1.7e}'.format(self.iter, -self.nlogML, self.trainRMSE,self.trainLL,time.time()-self.timer)
+            print '{0:4d}\t{1: 1.7e}\t{2: 1.7e}\t{3: 1.7e}\t{4: 1.7e}'.format(self.iter, -self.nlogML, self.trainRMSE,self.trainLL,time.time()-self.timer)
             self.best_theta = theta
             self.best_valid = self.trainLL
         else:
