@@ -70,11 +70,16 @@ PSi = bsxfun(@times,PHI,beta);
 
 SIGMA = PSi'*PHI+diag(alpha);
 
-L = chol(SIGMA);
+[U,S,~] = svd(SIGMA);
 
-SIGMAi = L\inv(L)';
+SIGMAi = (U/S)*U';
+logdet = sum(log(diag(S)));
 
-logdet = 2*sum(log(diag(L)));
+% L = chol(SIGMA);
+% 
+% SIGMAi = L\inv(L)';
+% 
+% logdet = 2*sum(log(diag(L)));
 
 variance = sum(PHI.*(PHI*SIGMAi),2);
 
