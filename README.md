@@ -7,7 +7,7 @@ This is a Matlab and a python implementations of the methods described in [Almos
   - **Global length-scale (GL)**: All the basis functions share the same length scale.
   - **Variable length-scale (VL)**: Each basis has a specific length-scale.
   - **Global Diagonal (GD)**: All the basis functions share the same diagonal covariance.
-  - **Variable Diagonal (VL)**: Each basis has a specific diagonal covariance.
+  - **Variable Diagonal (VD)**: Each basis has a specific diagonal covariance.
   - **Global Covariance (GC)**: All the basis functions share the same full covariance.
   - **Variable Covariance (GC)**: Each basis has a specific full covariance.
 
