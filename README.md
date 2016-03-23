@@ -9,7 +9,7 @@ This is a Matlab and a python implementations of the methods described in [Almos
   - **Global Diagonal (GD)**: All the basis functions share the same diagonal covariance.
   - **Variable Diagonal (VD)**: Each basis has a specific diagonal covariance.
   - **Global Covariance (GC)**: All the basis functions share the same full covariance.
-  - **Variable Covariance (GC)**: Each basis has a specific full covariance.
+  - **Variable Covariance (VC)**: Each basis has a specific full covariance.
 
 ### Joint Linear Prior Optimization
 The models allows for an optional linear prior optimization as descried in [Almosallamet et. al 2016](https://mnras.oxfordjournals.org/content/455/3/2387.abstract?related-urls=yes&legid=mnras;455/3/2387), i.e. the prior mean on the generative function is a linear combination of the raw input instead of a constant or simply zero. This has the effect that in extrapolation regions, the model will fall back to the general linear trend the data rather than falling back to zero.
