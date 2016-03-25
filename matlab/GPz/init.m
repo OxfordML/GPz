@@ -8,7 +8,7 @@ defaults =  { true               true    false          ones(n,1)   true(n,1)};
 
 [heteroscedastic,joint,decorrelate,omega,training]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
 
-model.m = m;
+model.m = m(end);
 model.method = method;
 model.joint = joint;
 model.heteroscedastic = heteroscedastic;
@@ -17,7 +17,7 @@ muY = mean(Y(training,:));
 
 Y = Y-muY;
 
-if(decorrelate)
+if(decorrelate||strcmp(method,'ANN'))
     [muX,T,Ti] = pca(X(training,:),1);
 else
     muX = 0;
@@ -27,58 +27,83 @@ end
 
 X = bsxfun(@minus,X,muX)*T;
 
-    
-[mu,~,Vi] = pca(X(training,:),1);
-
-P = (rand(m,d)-0.5)*sqrt(12);
-P = bsxfun(@plus,P*Vi,mu);
-
-
-D = Dxy(X(training,:),P);
-
-gamma = sqrt(2*nthroot(m,d)./mean(D));
-
 varY = var(Y(training,:));
 
 b = -log(varY);
 lnAlpha = log(varY);
 
 if(joint)
-    lnAlpha = lnAlpha*ones(m+d+1,1);
+    lnAlpha = lnAlpha*ones(m(end)+d+1,1);
 else
-    lnAlpha = lnAlpha*ones(m,1);
+    lnAlpha = lnAlpha*ones(m(end),1);
 end
 
-switch(method)
-    case 'GL'
-        GAMMA = mean(gamma);
-    case 'VL'
-        GAMMA = ones(1,m).*gamma;
-    case 'GD'
-        GAMMA = ones(d,1)*mean(gamma);
-    case 'VD'
-        GAMMA = bsxfun(@times,ones(d,m),gamma);
-    case 'GC'
-        GAMMA = eye(d)*mean(gamma);
-    case 'VC'
-        GAMMA = zeros(d,d,m);
-        for j=1:m
-            GAMMA(:,:,j) = eye(d)*gamma(j);
-        end
+if(strcmp(method,'ANN'))
+    
+    layers = [d m];
+    model.layers = layers;
+    
+    ind = cumsum([0 layers(1:end-1).*layers(2:end)+layers(2:end)]);
+    
+    theta = zeros(ind(end),1);
+
+    PHI = X(training,:);
+    
+    for i=1:length(m)
+        
+        W = (2*rand(layers(i),layers(i+1))-1)/sqrt(layers(i));
+        bias = zeros(1,m(i));
+        
+        theta(ind(i)+1:ind(i)+layers(i)*layers(i+1)) = W(:);
+        theta(ind(i)+layers(i)*layers(i+1)+1:ind(i)+layers(i)*layers(i+1)+layers(i+1)) = bias(:);
+        PHI = tanh(PHI*W);
+    end
+    
+    theta = [theta;lnAlpha;b];
+    
+    f = @(params) ANN(params,model,X,Y,omega,training,[]);
+else
+    [mu,~,Vi] = pca(X(training,:),1);
+    P = (rand(m,d)-0.5)*sqrt(12);
+    P = bsxfun(@plus,P*Vi,mu);
+
+    D = Dxy(X(training,:),P);
+
+    gamma = sqrt(2*nthroot(m,d)./mean(D));
+    
+    switch(method)
+        case 'GL'
+            GAMMA = mean(gamma);
+        case 'VL'
+            GAMMA = ones(1,m).*gamma;
+        case 'GD'
+            GAMMA = ones(d,1)*mean(gamma);
+        case 'VD'
+            GAMMA = bsxfun(@times,ones(d,m),gamma);
+        case 'GC'
+            GAMMA = eye(d)*mean(gamma);
+        case 'VC'
+            GAMMA = zeros(d,d,m);
+            for j=1:m
+                GAMMA(:,:,j) = eye(d)*gamma(j);
+            end
+    end
+
+    theta = [P(:);GAMMA(:);lnAlpha(:);b];
+    
+    f = @(params) GPz(params,model,X,Y,omega,training,[]);
+
 end
 
-f = @(params) GPz(params,model,X,Y,omega,training,[]);
-
-theta = [P(:);GAMMA(:);lnAlpha(:);b];
 
 if(heteroscedastic)
-    u = zeros(m,1);
-    lnEta = zeros(m,1);
+    u = zeros(m(end),1);
+    lnEta = zeros(m(end),1);
     
     [~,~,w,~,PHI] = f([theta;u(:);lnEta(:)]);
     
     target = -log((Y(training)-PHI*w).^2)-b;
-    lnEta = log(var(target))*ones(m,1);
+    lnEta = log(var(target))*ones(m(end),1);
     
 %     u = (PHI(:,1:m)'*PHI(:,1:m)+diag(exp(lnEta)))\PHI(:,1:m)'*target;
     

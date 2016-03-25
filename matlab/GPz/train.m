@@ -24,16 +24,20 @@ X = bsxfun(@minus,X,muX)*T;
 
 Y = Y-muY;
 
-f = @(params) GPz(params,model,X,Y,omega,training,validation);
+if(strcmp(model.method,'ANN'))
+    f = @(params) ANN(params,model,X,Y,omega,training,validation);
+else
+    f = @(params) GPz(params,model,X,Y,omega,training,validation);
+end
 
 options.method = 'lbfgs';
 options.display = 'off';
 options.maxIter = maxIter;
 options.MaxFunEvals = inf;
 options.outputFcn = @(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond) callBack(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond,maxIter,maxAttempts,isempty(validation));
-
+start = tic;
 theta = minFunc(f,theta,options);
-
+toc(start)
 [~,~,w,SIGMAi] = f(theta);
 
 

@@ -14,7 +14,11 @@ function [pred,sigma,modelV,noiseV,PHI] = predict(X,model,whichSet)
     
     X = bsxfun(@minus,X,model.muX)*model.T;
     
-    [~,~,~,~,PHI,lnBeta] = GPz(theta,model,X,[],[],[],[]);
+    if(strcmp(model.method,'ANN'))
+        [~,~,~,~,PHI,lnBeta] = ANN(theta,model,X,[],[],[],[]);
+    else
+        [~,~,~,~,PHI,lnBeta] = GPz(theta,model,X,[],[],[],[]);
+    end
     
     pred = PHI*w+muY;
 

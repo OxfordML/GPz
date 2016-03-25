@@ -1,3 +1,6 @@
+
+rng(1)
+
 addpath GPz/
 
 addpath(genpath('minFunc_2012/'))    % path to minfunc
@@ -34,7 +37,7 @@ model = train(model,X,Y);
 
 hold all;
 f = [mu+2*sqrt(sigma); flip(mu-2*sqrt(sigma))];
-fill([Xs; flip(Xs)], f, [0.85 0.85 0.85]);
+h1 = fill([Xs; flip(Xs)], f, [0.85 0.85 0.85]);
 plot(X,Y,'b.');
 
 
@@ -46,13 +49,12 @@ muY = model.muY;
 
 R = U*sqrt(S);
 
-k = 50;
+k = 20;
 ws = bsxfun(@plus,R*randn(length(w),k),w);
 
 mus = PHI*ws+muY;
 
 plot(Xs,mus);
-plot(Xs,mu,'r-','LineWidth',4);
+h4 = plot(Xs,mu,'r-','LineWidth',4);
 
 axis([-10    10   -13    17]);
-
