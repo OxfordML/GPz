@@ -22,7 +22,7 @@ defaults =  {  200      inf         ones(n,1)   true(n,1)      []};
 
 X = bsxfun(@minus,X,muX)*T;
 
-Y = Y-muY;
+Y = bsxfun(@minus,Y,muY);
 
 if(strcmp(model.method,'ANN'))
     f = @(params) ANN(params,model,X,Y,omega,training,validation);

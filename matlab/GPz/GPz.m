@@ -1,6 +1,7 @@
 function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,model,X,Y,omega,training,validation)
 
 
+k = model.k;
 m = model.m;
 method = model.method;
 joint = model.joint;
@@ -35,13 +36,13 @@ end
 P = reshape(theta(1:m*d),m,d);
 [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X(training,:),theta,method,m);
 PHI = exp(lnPHI);
-lnAlpha = theta(m*d+g_dim+1:m*d+g_dim+a_dim);
-b = theta(m*d+g_dim+a_dim+1);
+lnAlpha = reshape(theta(m*d+g_dim+1:m*d+g_dim+a_dim*k),a_dim,k);
+b = theta(m*d+g_dim+a_dim*k+1:m*d+g_dim+a_dim*k+k)';
 
-lnBeta = b+log(omega(training,:));
+lnBeta = bsxfun(@plus,log(omega(training,:)),repmat(b,n,1));
 
 if(heteroscedastic)
-    u = theta(m*d+g_dim+a_dim+1+1:m*d+g_dim+a_dim+1+m);
+    u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
     lnBeta = PHI*u+lnBeta;
 end
 
@@ -60,29 +61,43 @@ end
 beta = exp(lnBeta);
 
 alpha = exp(lnAlpha);
+%%%%%%%%%
 
-BxPHI = bsxfun(@times,PHI,beta);
+variance = zeros(n,k);
+w = zeros(a_dim,k);
+dwda = zeros(a_dim,k);
+SIGMAi = zeros(a_dim,a_dim,k);
+logdet = zeros(1,k);
+dlnPHI = zeros(n,m);
+dlnAlpha = zeros(a_dim,k);
 
-SIGMA = BxPHI'*PHI+diag(alpha);
+for i=1:k
+    BxPHI = bsxfun(@times,PHI,beta(:,i));
 
-[U,S,~] = svd(SIGMA);
+    SIGMA = BxPHI'*PHI+diag(alpha(:,i));
 
-SIGMAi = (U/S)*U';
-logdet = sum(log(diag(S)));
+    [U,S,~] = svd(SIGMA);
 
-% L = chol(SIGMA);
-% 
-% SIGMAi = L\inv(L)';
-% 
-% logdet = 2*sum(log(diag(L)));
+    SIGMAi(:,:,i) = (U/S)*U';
+    logdet(i) = sum(log(diag(S)));
 
-variance = sum(PHI.*(PHI*SIGMAi),2);
+    variance(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
 
-w = SIGMAi*BxPHI'*Y(training,:);
+    w(:,i) = SIGMAi(:,:,i)*BxPHI'*Y(training,i);
+
+    dwda(:,i) = -SIGMAi(:,:,i)*(alpha(:,i).*w(:,i));
+    
+    dlnPHI = dlnPHI-(BxPHI*SIGMAi(:,1:m,i)).*PHI(:,1:m);
+    dlnAlpha(:,i) = -0.5*diag(SIGMAi(:,:,i)).*alpha(:,i);
+
+end
+
 
 delta = PHI*w-Y(training,:);
 
-nlogML = -0.5*sum(delta.^2.*beta)-0.5*sum(w.^2.*alpha)+0.5*sum(lnAlpha)+0.5*sum(lnBeta)-0.5*logdet-(n/2)*log(2*pi);
+dlnPHI= dlnPHI-((delta.*beta)*w(1:m,:)').*PHI(:,1:m);
+
+nlogML = -0.5*sum(delta.^2.*beta)-0.5*sum(w.^2.*alpha)+0.5*sum(lnAlpha)+0.5*sum(lnBeta)-0.5*logdet;
 
 
 if(nargout>2)
@@ -95,14 +110,12 @@ db = sum(dbeta);
 
 
 if(heteroscedastic)
-    lnEta = theta(m*d+g_dim+a_dim+1+m+1:m*d+g_dim+a_dim+1+m+m);
+    lnEta = reshape(theta(m*d+g_dim+a_dim*k+k+m*k+1:m*d+g_dim+a_dim*k+k+m*k+m*k),m,k);
     eta = exp(lnEta);
     nlogML = nlogML-0.5*sum(u.^2.*eta)+0.5*sum(lnEta);
     du = PHI(:,1:m)'*dbeta-u.*eta;
     dlnEta = -0.5*eta.*u.^2+0.5;
-    dlnPHI = (dbeta*u'-(delta.*beta)*w(1:m)'-BxPHI*SIGMAi(:,1:m)).*PHI(:,1:m);    
-else
-    dlnPHI = (-(delta.*beta)*w(1:m)'-BxPHI*SIGMAi(:,1:m)).*PHI(:,1:m);
+    dlnPHI = dlnPHI+(dbeta*u').*PHI(:,1:m);    
 end
 
 dP = zeros(size(P));
@@ -130,28 +143,24 @@ for j=1:m
             dP(j,:) = dlnPHI(:,j)'*Delta*(GAMMA(:,:,j)'*GAMMA(:,:,j));
             dGj = -GAMMA(:,:,j)*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
             dGAMMA(:,:,j) = dGj;
-            
     end
 end
 
-dwda = -SIGMAi*(alpha.*w);
+dlnAlpha = dlnAlpha-(PHI'*(beta.*delta)).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
 
-dlnAlpha = -(dwda*(beta.*delta)'.*PHI')*ones(n,1)-alpha.*w.*dwda-0.5*alpha.*w.^2-0.5*diag(SIGMAi).*alpha+0.5;
-
-grad = [dP(:);dGAMMA(:);dlnAlpha(:);db];
+grad = [dP(:);dGAMMA(:);dlnAlpha(:);db(:)];
 
 if(heteroscedastic)
     grad = [grad;du(:);dlnEta(:)];
 end
 
-
-nlogML = -nlogML/n;
-grad = -grad/n;
+nlogML = -sum(nlogML)/(n*k);
+grad = -grad/(n*k);
 
 sigma = variance+exp(-lnBeta);
 
-trainRMSE = sqrt(mean(omega(training).*delta.^2));
-trainLL = mean(-0.5*delta.^2./sigma-0.5*log(sigma))-0.5*log(2*pi);
+trainRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(training)))/(n*k));
+trainLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
 
 if(~isempty(validation))
     
@@ -159,22 +168,29 @@ if(~isempty(validation))
 
     lnPHI= getLogPHI_GAMMA(X(validation,:),theta,method,m);
     PHI = exp(lnPHI);
-    lnSigma = -b-log(omega(validation));
+    
+    lnBeta = bsxfun(@plus,log(omega(validation,:)),repmat(b,n,1));
     
     if(heteroscedastic)
-        lnSigma = lnSigma-PHI*u;
+        lnBeta = PHI*u+lnBeta;
     end
 
     if(joint)
         PHI = [PHI X(validation,:) ones(n,1)];
     end
     
-    sigma = sum(PHI.*(PHI*SIGMAi),2)+exp(lnSigma);
+    variance = zeros(n,k);
+    
+    for i=1:k
+        variance(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+    end
+    
+    sigma = variance+exp(-lnBeta);
 
     delta = PHI*w-Y(validation,:);
-
-    validRMSE = sqrt(mean(omega(validation).*delta.^2));
-    validLL = mean(-0.5*delta.^2./sigma-0.5*log(sigma))-0.5*log(2*pi);
+    
+    validRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(validation)))/(n*k));
+    validLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
     
 end
 

@@ -1,6 +1,7 @@
 function model = init(X,Y,method,m,varargin)
 
 [n,d] = size(X);
+k = size(Y,2);
 
 pnames =    { 'heteroscedastic' 'joint' 'decorrelate'   'omega'    'training'};
 defaults =  { true               true    false          ones(n,1)   true(n,1)};
@@ -8,6 +9,7 @@ defaults =  { true               true    false          ones(n,1)   true(n,1)};
 
 [heteroscedastic,joint,decorrelate,omega,training]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
 
+model.k = k;
 model.m = m(end);
 model.method = method;
 model.joint = joint;
@@ -15,7 +17,7 @@ model.heteroscedastic = heteroscedastic;
 
 muY = mean(Y(training,:));
 
-Y = Y-muY;
+Y = bsxfun(@minus,Y,muY);
 
 if(decorrelate||strcmp(method,'ANN'))
     [muX,T,Ti] = pca(X(training,:),1);
@@ -33,9 +35,9 @@ b = -log(varY);
 lnAlpha = log(varY);
 
 if(joint)
-    lnAlpha = lnAlpha*ones(m(end)+d+1,1);
+    lnAlpha = repmat(lnAlpha,m(end)+d+1,1);
 else
-    lnAlpha = lnAlpha*ones(m(end),1);
+    lnAlpha = repmat(lnAlpha,m(end),1);
 end
 
 if(strcmp(method,'ANN'))
@@ -89,7 +91,7 @@ else
             end
     end
 
-    theta = [P(:);GAMMA(:);lnAlpha(:);b];
+    theta = [P(:);GAMMA(:);lnAlpha(:);b(:)];
     
     f = @(params) GPz(params,model,X,Y,omega,training,[]);
 
@@ -97,13 +99,13 @@ end
 
 
 if(heteroscedastic)
-    u = zeros(m(end),1);
-    lnEta = zeros(m(end),1);
+    u = zeros(m(end),k);
+    lnEta = zeros(m(end),k);
     
     [~,~,w,~,PHI] = f([theta;u(:);lnEta(:)]);
     
-    target = -log((Y(training)-PHI*w).^2)-b;
-    lnEta = log(var(target))*ones(m(end),1);
+    target = -bsxfun(@plus,log((Y(training,:)-PHI*w).^2),b);
+    lnEta = repmat(log(var(target)),m(end),1);
     
 %     u = (PHI(:,1:m)'*PHI(:,1:m)+diag(exp(lnEta)))\PHI(:,1:m)'*target;
     

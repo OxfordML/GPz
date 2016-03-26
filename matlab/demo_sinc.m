@@ -18,7 +18,7 @@ Xs = X;
 
 X = X(X<-6|X>-3);
 
-f_noise = 0.01+3*sin(X).*(1+exp(-0.1*X)).^-1;
+f_noise = 0.01+3*sin(X)./(1+exp(-0.1*X));
 
 Y = 10*sinc(2*X)+randn(size(X)).*f_noise.^2;
 
