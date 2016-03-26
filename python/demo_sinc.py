@@ -43,7 +43,7 @@ SIGMAi = model.SIGMAi
 muY = model.muY
 w = model.w
 
-[U,S,V] = svd(SIGMAi)
+[U,S,V] = svd(SIGMAi[:,:,0])
 R = dot(U,diag(sqrt(S)))
 
 k = 50

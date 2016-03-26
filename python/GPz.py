@@ -115,7 +115,9 @@ class GP:
         _,k = Y.shape
 
         self.k = k;
-
+        layers = hstack([d,self.m])
+        self.layers = layers
+        self.m = self.layers[-1]
         m = self.m
         method = self.method
         joint = self.joint
@@ -132,20 +134,15 @@ class GP:
         if omega is None:
             omega = ones((n, 1))
 
-        if decorrelate:
+        if decorrelate or method == 'ANN':
             pca.fit(Xt[training, :])
             Xt = pca.transform(Xt)
+            self.decorrelate = True
 
 
         self.muY = mean(Y[training, :],0)
 
         Yt = Y-self.muY
-
-        pca4k = PCA(whiten=True)
-        pca4k.fit(Xt[training, :])
-        P = pca4k.inverse_transform((random.rand(m, d) - 0.5)*sqrt(12))
-
-        gamma = sqrt(2*power(m,1./d) / mean(Dxy(X[training, :], P),0))
 
         b = -log(var(Yt[training]))*ones((1,k))
 
@@ -156,35 +153,56 @@ class GP:
 
         lnAlpha = -b*ones((a_dim,k))
 
-        if method == 'GL':
-            GAMMA = mean(gamma)
-        elif method == 'VL':
-            GAMMA = gamma
-        elif method == 'GD':
-            GAMMA = ones((1,d))*mean(gamma)
-        elif method == 'VD':
-            GAMMA = ones((d,m))*gamma
-        elif method == 'GC':
-            GAMMA = eye(d) * mean(gamma)
-        else:
-            GAMMA = zeros((d, d, m))
-            for j in range(m):
-                GAMMA[:, :, j] = eye(d) * gamma[j]
+        if method == 'ANN':
+            ind = cumsum(hstack([0,layers[0:-1]*layers[1:]+layers[1:]]))
+            theta = zeros((ind[-1],1))
+            PHI = Xt[training,:]
 
-        theta = concatenate([P.flatten(), GAMMA.flatten(), lnAlpha.flatten(), b.flatten()])
+            for i in range(len(layers)-1):
+                W = (2*random.rand(layers[i],layers[i+1])-1)/sqrt(layers[i])
+                theta[ind[i]:ind[i]+layers[i]*layers[i+1],0] = W.flatten()
+                PHI = tanh(dot(PHI,W))
+
+            theta = concatenate([theta.flatten(), lnAlpha.flatten(), b.flatten()])
+
+
+            f = self.ANN_fun
+        else:
+
+            pca4k = PCA(whiten=True)
+            pca4k.fit(Xt[training, :])
+            P = pca4k.inverse_transform((random.rand(m, d) - 0.5)*sqrt(12))
+
+            gamma = sqrt(2*power(m,1./d) / mean(Dxy(X[training, :], P),0))
+
+            if method == 'GL':
+                GAMMA = gamma
+            elif method == 'VL':
+                GAMMA = gamma
+            elif method == 'GD':
+                GAMMA = ones((1,d))*mean(gamma)
+            elif method == 'VD':
+                GAMMA = ones((d,m))*gamma
+            elif method == 'GC':
+                GAMMA = eye(d) * mean(gamma)
+            else:
+                GAMMA = zeros((d, d, m))
+                for j in range(m):
+                    GAMMA[:, :, j] = eye(d) * gamma[j]
+
+            theta = concatenate([P.flatten(), GAMMA.flatten(), lnAlpha.flatten(), b.flatten()])
+            f = self.GP_fun
 
         if(heteroscedastic):
 
-            theta = concatenate([theta.flatten(), zeros(2*m*k).flatten()])
-
-            w,SIGMAi = self.GP_fun(theta, Xt, Yt, omega=omega,training=training, validation=[], returnModel=True)
-            PHI,_ = self.GP_fun(theta, Xt, [],training=training)
+            w,SIGMAi = f(concatenate([theta.flatten(), zeros(2*m*k).flatten()]), Xt, Yt, omega=omega,training=training, validation=[], returnModel=True)
+            PHI,_ = f(concatenate([theta.flatten(), zeros(2*m*k).flatten()]), Xt, [],training=training)
 
             target = -log((Yt[training,:]-dot(PHI,w))**2)-b
             lnEta = log(var(target))*ones((m,k))
 
             # u = dot(inv(dot(PHI[:,0:m].T,PHI[:,0:m])+diag(exp(lnEta))),dot(PHI[:,0:m].T,target))
-            theta = concatenate([P.flatten(), GAMMA.flatten(), lnAlpha.flatten(), b.flatten(), zeros((m,k)).flatten(), lnEta.flatten()])
+            theta = concatenate([theta.flatten(), zeros((m,k)).flatten(), lnEta.flatten()])
 
         self.theta = theta
         self.w = zeros((a_dim,1))
@@ -226,8 +244,12 @@ class GP:
 
         Yt = Y-self.muY
 
-        fx = self.GP_fun
-        gx = self.GP_grad
+        if self.method == 'ANN':
+            fx = self.ANN_fun
+            gx = self.ANN_grad
+        else:
+            fx = self.GP_fun
+            gx = self.GP_grad
 
         self.iter = 1
         self.timer = time.time()
@@ -264,7 +286,10 @@ class GP:
         else:
             Xt = X
 
-        PHI,lnBeta = self.GP_fun(theta, Xt, [])
+        if self.method == 'ANN':
+            PHI,lnBeta = self.ANN_fun(theta, Xt, [])
+        else:
+            PHI,lnBeta = self.GP_fun(theta, Xt, [])
 
         mu = dot(PHI, w) + self.muY
 
@@ -278,6 +303,255 @@ class GP:
         sigma = modelV+noiseV
 
         return mu,sigma,modelV, noiseV,PHI
+
+    def ANN_fun(self,theta, X, Y, omega=None, training=None, validation=None, returnModel=False):
+
+        layers = self.layers
+        m = layers[-1]
+        n_layers = len(layers)-1
+
+        k = self.k
+        joint = self.joint
+        heteroscedastic = self.heteroscedastic
+
+        n,d = X.shape
+
+        if training is None:
+            training = ones(n, dtype=bool)
+
+        if omega is None:
+            omega = ones((n, 1))
+
+        n = sum(training)
+
+        if(joint):
+            a_dim = m+d+1
+        else:
+            a_dim = m
+
+        PHI = empty(n_layers+1, dtype=object)
+        PHI[0] = X[training,:]
+
+        W = empty(n_layers, dtype=object)
+        bias = empty(n_layers, dtype=object)
+
+        ind = cumsum(hstack([0,layers[0:-1]*layers[1:]+layers[1:]]))
+
+        for i in range(n_layers):
+
+            W[i] = theta[ind[i]:ind[i]+layers[i]*layers[i+1]].reshape(layers[i],layers[i+1])
+            bias[i] = theta[ind[i]+layers[i]*layers[i+1]:ind[i]+layers[i]*layers[i+1]+layers[i+1]].reshape(1,layers[i+1])
+            PHI[i+1] = tanh(dot(PHI[i],W[i])+bias[i])
+
+        lnAlpha = theta[ind[-1]:ind[-1]+a_dim*k].reshape(a_dim,k)
+        b = theta[ind[-1]+a_dim*k:ind[-1]+a_dim*k+k].reshape(1,k)
+
+        lnBeta = log(omega[training,:])+dot(ones((n,1)),b)
+
+        if(heteroscedastic):
+            u = theta[ind[-1]+a_dim*k+k:ind[-1]+a_dim*k+k+m*k].reshape(m, k)
+            lnBeta = dot(PHI[-1], u)+lnBeta
+
+        if (joint):
+            PHI[-1] = hstack([PHI[-1], X[training, :], ones((n, 1))])
+
+        if Y==[]:
+            return PHI[-1],lnBeta
+
+        beta = exp(lnBeta)
+        alpha = exp(lnAlpha)
+
+        w = zeros((a_dim,k))
+        SIGMAi = zeros((a_dim,a_dim,k))
+        logdet = zeros((1,k))
+
+        for i in range(k):
+            A = diag(alpha[:, i])
+
+            BxPHI = PHI[-1] * beta[:,i:i+1]
+
+            SIGMA = dot(BxPHI.T, PHI[-1]) + A
+            Li = inv(cholesky(SIGMA))
+
+            SIGMAi[:,:,i] = dot(Li.T,Li)
+            logdet[0,i] = -2*sum(log(diag(Li)))
+
+            w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
+
+
+        delta = dot(PHI[-1], w) - Y[training, :]
+
+        nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
+
+        if(heteroscedastic):
+            lnEta = theta[ind[-1]+a_dim*k+k+m*k:ind[-1]+a_dim*k+k+m*k+m*k].reshape(m, k)
+            eta = exp(lnEta)
+            nlogML = nlogML - 0.5 * sum(u ** 2 * eta,0) + 0.5 * sum(lnEta,0)
+
+
+        nlogML = -sum(nlogML)/(n*k)
+
+        self.nlogML = nlogML
+
+        if returnModel:
+            return w, SIGMAi
+        else:
+
+            variance = zeros((n,k))
+
+            for i in range(k):
+                variance[:,i:i+1] = sum(dot(PHI[-1],SIGMAi[:,:,i]) * PHI[-1], 1).reshape(n, 1)
+
+            sigma = variance+exp(-lnBeta)
+
+            self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
+            self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
+
+            if validation is not None:
+
+                n = sum(validation)
+
+                PHI = X[validation,:]
+
+                for i in range(n_layers):
+                    PHI = tanh(dot(PHI,W[i])+bias[i])
+
+
+                lnBeta = dot(ones((n,1)),b)+log(omega[validation])
+
+                if(heteroscedastic):
+                    lnBeta = dot(PHI, u)+lnBeta
+
+                if (joint):
+                    PHI = hstack([PHI, X[validation, :], ones((n, 1))])
+
+                variance = zeros((n,k))
+                for i in range(k):
+                    variance[:,i:i+1] = sum(dot(PHI,SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
+
+                sigma = variance+exp(-lnBeta)
+
+                delta = dot(PHI, w) - Y[validation, :]
+
+                self.validRMSE = sqrt(mean(omega[validation] * delta ** 2))
+                self.validLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
+
+            return nlogML
+
+    def ANN_grad(self,theta, X, Y, omega=None, training=None, validation=None):
+
+        layers = self.layers
+        m = layers[-1]
+        n_layers = len(layers)-1
+
+        k = self.k
+        joint = self.joint
+        heteroscedastic = self.heteroscedastic
+
+        n,d = X.shape
+
+        if training is None:
+            training = ones(n, dtype=bool)
+
+        if omega is None:
+            omega = ones((n, 1))
+
+        n = sum(training)
+
+        if(joint):
+            a_dim = m+d+1
+        else:
+            a_dim = m
+
+        PHI = empty(n_layers+1, dtype=object)
+        PHI[0] = X[training,:]
+
+        W = empty(n_layers, dtype=object)
+        bias = empty(n_layers, dtype=object)
+
+        ind = cumsum(hstack([0,layers[0:-1]*layers[1:]+layers[1:]]))
+
+        for i in range(n_layers):
+            W[i] = theta[ind[i]:ind[i]+layers[i]*layers[i+1]].reshape(layers[i],layers[i+1])
+            bias[i] = theta[ind[i]+layers[i]*layers[i+1]:ind[i]+layers[i]*layers[i+1]+layers[i+1]].reshape(1,layers[i+1])
+            PHI[i+1] = tanh(dot(PHI[i],W[i])+bias[i])
+
+        lnAlpha = theta[ind[-1]:ind[-1]+a_dim*k].reshape(a_dim,k)
+        b = theta[ind[-1]+a_dim*k:ind[-1]+a_dim*k+k].reshape(1,k)
+
+        lnBeta = log(omega[training,:])+dot(ones((n,1)),b)
+
+        if(heteroscedastic):
+            u = theta[ind[-1]+a_dim*k+k:ind[-1]+a_dim*k+k+m*k].reshape(m, k)
+            lnBeta = dot(PHI[-1], u)+lnBeta
+
+        if (joint):
+            PHI[-1] = hstack([PHI[-1], X[training, :], ones((n, 1))])
+
+
+        beta = exp(lnBeta)
+        alpha = exp(lnAlpha)
+
+        w = zeros((a_dim,k))
+        dwda = zeros((a_dim,k))
+        SIGMAi = zeros((a_dim,a_dim,k))
+        variance = zeros((n,k))
+        dPHI = zeros((n,m))
+        dlnAlpha = zeros((a_dim,k))
+
+        for i in range(k):
+            A = diag(alpha[:, i])
+
+            BxPHI = PHI[-1] * beta[:,i:i+1]
+
+            SIGMA = dot(BxPHI.T, PHI[-1]) + A
+            Li = inv(cholesky(SIGMA))
+
+            SIGMAi[:,:,i] = dot(Li.T,Li)
+
+            w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
+
+            variance[:,i:i+1] = sum(dot(PHI[-1],SIGMAi[:,:,i]) * PHI[-1], 1).reshape(n, 1)
+
+            dwda[:,i:i+1] = -dot(SIGMAi[:,:,i],alpha[:,i:i+1]*w[:,i:i+1])
+
+            dPHI = dPHI-dot(BxPHI,SIGMAi[:,0:m,i])*(1-PHI[-1][:,0:m]**2)
+            dlnAlpha[:,i:i+1] = -0.5*diag(SIGMAi[:,:,i]).reshape(a_dim,1) * alpha[:,i:i+1]
+
+
+        delta = dot(PHI[-1], w) - Y[training, :]
+
+        dPHI = dPHI-dot(delta*beta,w[0:m,:].T)*(1-PHI[-1][:,0:m]**2)
+
+        dbeta = -0.5*beta*(delta**2+variance)+0.5
+        db = sum(dbeta,0)
+
+        if(heteroscedastic):
+            lnEta = theta[ind[-1]+a_dim*k+k+m*k:ind[-1]+a_dim*k+k+m*k+m*k].reshape(m, k)
+            eta = exp(lnEta)
+            du = dot(PHI[-1][:,0:m].T,dbeta)-u*eta
+            dlnEta = -0.5*eta*u**2+0.5
+            dPHI = dPHI+dot(dbeta,u.T)*(1-PHI[-1][:,0:m]**2)
+
+        dlnAlpha = dlnAlpha-dot(PHI[-1].T,beta*delta)*dwda - alpha * w * dwda - 0.5*alpha * w ** 2  + 0.5
+
+        grad = zeros(ind[-1])
+
+        for i in list(reversed(range(n_layers))):
+            dW = dot(PHI[i].T,dPHI)
+            dbias = sum(dPHI,0)
+
+            grad[ind[i]:ind[i]+layers[i]*layers[i+1]] = dW.flatten()
+            grad[ind[i]+layers[i]*layers[i+1]:ind[i]+layers[i]*layers[i+1]+layers[i+1]] = dbias.flatten()
+
+            dPHI = dot(dPHI,W[i].T)*(1-PHI[i]**2)
+
+        grad = concatenate([grad.flatten(),dlnAlpha.flatten(),db.flatten()])
+
+        if(heteroscedastic):
+            grad = concatenate([grad.flatten(),du.flatten(),dlnEta.flatten()])
+
+        return -grad/(n*k)
 
     def GP_fun(self,theta, X, Y, omega=None, training=None, validation=None, returnModel=False):
 
@@ -312,10 +586,10 @@ class GP:
 
         alpha = exp(lnAlpha)
 
-        lnBeta = dot(ones((n,1)),b)+log(omega[training])
+        lnBeta = dot(ones((n,1)),b)+log(omega[training,:])
 
         if(heteroscedastic):
-            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
+            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m,k)
             lnBeta = dot(PHI, u)+lnBeta
 
         beta = exp(lnBeta)
@@ -368,7 +642,7 @@ class GP:
 
             sigma = variance+exp(-lnBeta)
 
-            self.trainRMSE = sqrt(mean(omega[training] * delta ** 2))
+            self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
             self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
 
             if validation is not None:
@@ -430,7 +704,7 @@ class GP:
         lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim, k)
         b = theta[m*d+g_dim+a_dim*k:m*d+g_dim+a_dim*k+k].reshape(1, k)
 
-        lnBeta = dot(ones((n,1)),b)+log(omega[training])
+        lnBeta = dot(ones((n,1)),b)+log(omega[training,:])
 
         if(heteroscedastic):
             u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
