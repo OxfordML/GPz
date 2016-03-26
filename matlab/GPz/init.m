@@ -54,10 +54,9 @@ if(strcmp(method,'ANN'))
     for i=1:length(m)
         
         W = (2*rand(layers(i),layers(i+1))-1)/sqrt(layers(i));
-        bias = zeros(1,m(i));
         
         theta(ind(i)+1:ind(i)+layers(i)*layers(i+1)) = W(:);
-        theta(ind(i)+layers(i)*layers(i+1)+1:ind(i)+layers(i)*layers(i+1)+layers(i+1)) = bias(:);
+        
         PHI = tanh(PHI*W);
     end
     

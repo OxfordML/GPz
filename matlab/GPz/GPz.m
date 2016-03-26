@@ -34,8 +34,10 @@ else
 end
 
 P = reshape(theta(1:m*d),m,d);
+
 [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X(training,:),theta,method,m);
 PHI = exp(lnPHI);
+
 lnAlpha = reshape(theta(m*d+g_dim+1:m*d+g_dim+a_dim*k),a_dim,k);
 b = theta(m*d+g_dim+a_dim*k+1:m*d+g_dim+a_dim*k+k)';
 
@@ -59,9 +61,7 @@ if(isempty(Y))
 end
 
 beta = exp(lnBeta);
-
 alpha = exp(lnAlpha);
-%%%%%%%%%
 
 variance = zeros(n,k);
 w = zeros(a_dim,k);
@@ -72,6 +72,7 @@ dlnPHI = zeros(n,m);
 dlnAlpha = zeros(a_dim,k);
 
 for i=1:k
+    
     BxPHI = bsxfun(@times,PHI,beta(:,i));
 
     SIGMA = BxPHI'*PHI+diag(alpha(:,i));
@@ -92,22 +93,20 @@ for i=1:k
 
 end
 
-
 delta = PHI*w-Y(training,:);
 
-dlnPHI= dlnPHI-((delta.*beta)*w(1:m,:)').*PHI(:,1:m);
-
-nlogML = -0.5*sum(delta.^2.*beta)-0.5*sum(w.^2.*alpha)+0.5*sum(lnAlpha)+0.5*sum(lnBeta)-0.5*logdet;
-
+nlogML = -0.5*sum(beta.*delta.^2)+0.5*sum(lnBeta)-0.5*sum(alpha.*w.^2)+0.5*sum(lnAlpha)-0.5*logdet;
 
 if(nargout>2)
     grad = 0;
     return
 end
 
-dbeta = -0.5*beta.*(delta.^2+variance)+0.5;
-db = sum(dbeta);
+dlnAlpha = dlnAlpha-(PHI'*(beta.*delta)).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
+dlnPHI= dlnPHI-((beta.*delta)*w(1:m,:)').*PHI(:,1:m);
 
+dbeta = -0.5*(beta.*delta.^2+beta.*variance)+0.5;
+db = sum(dbeta);
 
 if(heteroscedastic)
     lnEta = reshape(theta(m*d+g_dim+a_dim*k+k+m*k+1:m*d+g_dim+a_dim*k+k+m*k+m*k),m,k);
@@ -120,6 +119,7 @@ end
 
 dP = zeros(size(P));
 dGAMMA = zeros(size(GAMMA));
+
 for j=1:m
     Delta = bsxfun(@minus,X(training,:),P(j,:));
     switch(method)
@@ -145,8 +145,6 @@ for j=1:m
             dGAMMA(:,:,j) = dGj;
     end
 end
-
-dlnAlpha = dlnAlpha-(PHI'*(beta.*delta)).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
 
 grad = [dP(:);dGAMMA(:);dlnAlpha(:);db(:)];
 
