@@ -67,4 +67,5 @@ mus = bsxfun(@plus,mus,muY);
 plot(Xs,mus);
 h2 = plot(Xs,mu,'r-','LineWidth',4);
 
-legend([h1 h2], {'$\pm 2\sigma_{*}$','$\mu_{*}$'},'FontSize',14,'Location','NorthWest','interpreter','latex');
+legend([h1 h2], {'$\pm 2\sigma_{*}$','$\mu_{*}$'},'FontSize',18,'Location','NorthWest','interpreter','latex');
+axis tight;

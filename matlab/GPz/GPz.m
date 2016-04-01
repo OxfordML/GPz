@@ -1,16 +1,16 @@
 function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,model,X,Y,omega,training,validation)
 
-k = model.k;
-m = model.m;
-method = model.method;
-joint = model.joint;
-heteroscedastic = model.heteroscedastic;
-
 global trainRMSE
 global trainLL
 
 global validRMSE
 global validLL
+
+k = model.k;
+m = model.m;
+method = model.method;
+joint = model.joint;
+heteroscedastic = model.heteroscedastic;
 
 n = size(X,1);
 
@@ -34,22 +34,11 @@ end
 
 P = reshape(theta(1:m*d),m,d);
 
-[lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X(training,:),theta,method,m);
-PHI = exp(lnPHI);
+[PHI,lnBeta,GAMMA] = getPHI(X(training,:),omega(training,:),theta,model);
+
+g_dim = length(GAMMA(:));
 
 lnAlpha = reshape(theta(m*d+g_dim+1:m*d+g_dim+a_dim*k),a_dim,k);
-b = theta(m*d+g_dim+a_dim*k+1:m*d+g_dim+a_dim*k+k)';
-
-lnBeta = bsxfun(@plus,log(omega(training,:)),repmat(b,n,1));
-
-if(heteroscedastic)
-    u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
-    lnBeta = PHI*u+lnBeta;
-end
-
-if(joint)
-    PHI = [PHI X(training,:) ones(n,1)];
-end
 
 if(isempty(Y))
     nlogML = 0;
@@ -108,6 +97,7 @@ dbeta = -0.5*(beta.*delta.^2+beta.*nu)+0.5;
 db = sum(dbeta);
 
 if(heteroscedastic)
+    u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
     lnEta = reshape(theta(m*d+g_dim+a_dim*k+k+m*k+1:m*d+g_dim+a_dim*k+k+m*k+m*k),m,k);
     eta = exp(lnEta);
     nlogML = nlogML-0.5*sum(u.^2.*eta)+0.5*sum(lnEta);
@@ -124,10 +114,10 @@ for j=1:m
     switch(method)
         case 'GL'
             dP(j,:) = dlnPHI(:,j)'*Delta*GAMMA^2;
-            dGAMMA = dGAMMA+2*sum(dlnPHI(:,j).*lnPHI(:,j))/GAMMA;
+            dGAMMA = dGAMMA-sum(dlnPHI(:,j).*sum(Delta.^2,2))*GAMMA;
         case 'VL'
             dP(j,:) = dlnPHI(:,j)'*Delta*GAMMA(j)^2;
-            dGAMMA(j) = 2*sum(dlnPHI(:,j).*lnPHI(:,j))/GAMMA(j);
+            dGAMMA(j) = -sum(dlnPHI(:,j).*sum(Delta.^2,2))*GAMMA(j);
         case 'GD'
             dP(j,:) = dlnPHI(:,j)'*bsxfun(@times,Delta,GAMMA.^2);
             dGAMMA = dGAMMA-sum(bsxfun(@times,bsxfun(@times,Delta,dlnPHI(:,j)),GAMMA).*Delta);
@@ -163,18 +153,7 @@ if(~isempty(validation))
     
     n = sum(validation);
 
-    lnPHI= getLogPHI_GAMMA(X(validation,:),theta,method,m);
-    PHI = exp(lnPHI);
-    
-    lnBeta = bsxfun(@plus,log(omega(validation,:)),repmat(b,n,1));
-    
-    if(heteroscedastic)
-        lnBeta = PHI*u+lnBeta;
-    end
-
-    if(joint)
-        PHI = [PHI X(validation,:) ones(n,1)];
-    end
+    [PHI,lnBeta] = getPHI(X(validation,:),omega(validation,:),theta,model);
     
     nu = zeros(n,k);
     

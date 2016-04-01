@@ -30,9 +30,9 @@ end
 X = bsxfun(@minus,X,muX)*T;
 
 varY = var(Y(training,:));
-
 wL = (X(training,:)'*X(training,:)+eye(d)*varY)\X(training,:)'*Y(training,:);
 model.wL = wL;
+
 Y = bsxfun(@minus,Y,X*wL);
 
 varY = var(Y(training,:));

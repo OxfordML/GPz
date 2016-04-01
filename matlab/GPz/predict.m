@@ -18,7 +18,7 @@ function [mu,sigma,nu,beta_i,PHI] = predict(X,model,whichSet)
     if(strcmp(model.method,'ANN'))
         [~,~,~,~,PHI,lnBeta] = ANN(theta,model,X,[],[],[],[]);
     else
-        [~,~,~,~,PHI,lnBeta] = GPz(theta,model,X,[],[],[],[]);
+        [PHI,lnBeta] = getPHI(X,1,theta,model);
     end
     
     mu = PHI*w;

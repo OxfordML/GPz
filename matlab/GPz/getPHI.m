@@ -1,18 +1,29 @@
-function [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X,theta,method,m)
+function [PHI,lnBeta,GAMMA] = getPHI(X,omega,theta,model)
 
     [n,d] = size(X);
+    
+    m = model.m;
+    method = model.method;
+    k = model.k;
+    
+    if(model.joint)
+        a_dim = m+d+1;
+    else
+        a_dim = m;
+    end
+  
     P = reshape(theta(1:m*d),m,d);
     switch(method)
         case 'GL'
-            g_dim = 1;
+            
             GAMMA = theta(m*d+1);
             lnPHI = -0.5*Dxy(X,P)*GAMMA^2;
         case 'VL'
-            g_dim = m;
+            
             GAMMA = theta(m*d+1:m*d+m)';
             lnPHI = -0.5*bsxfun(@times,Dxy(X,P),GAMMA.^2);
         case 'GD'
-            g_dim = d;
+            
             GAMMA = theta(m*d+1:m*d+d)';
             
             lnPHI = zeros(n,m);
@@ -21,7 +32,6 @@ function [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X,theta,method,m)
                 lnPHI(:,j) = -0.5*sum(power(bsxfun(@times,Delta,GAMMA),2),2);
             end
         case 'VD'
-            g_dim = d*m;
 
             GAMMA = reshape(theta(m*d+1:m*d+m*d),m,d);
             lnPHI = zeros(n,m);
@@ -31,7 +41,7 @@ function [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X,theta,method,m)
             end
             
         case 'GC'
-            g_dim = d*d;
+            
             GAMMA = reshape(theta(m*d+1:m*d+d*d),d,d);
             
             lnPHI = zeros(n,m);
@@ -41,7 +51,6 @@ function [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X,theta,method,m)
             end
         case 'VC'
             
-            g_dim = d*d*m;
             GAMMA = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
             
             lnPHI = zeros(n,m);
@@ -51,4 +60,22 @@ function [lnPHI,GAMMA,g_dim] = getLogPHI_GAMMA(X,theta,method,m)
             end
             
     end
+   
+    g_dim = length(GAMMA(:));
+    
+    b = theta(m*d+g_dim+a_dim*k+1:m*d+g_dim+a_dim*k+k)';
+    
+    lnBeta = bsxfun(@plus,log(omega),repmat(b,n,1));
+    
+    PHI = exp(lnPHI);
+    
+    if(model.heteroscedastic)
+        u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
+        lnBeta = PHI*u+lnBeta;
+    end
+
+    if(model.joint)
+        PHI = [PHI X ones(n,1)];
+    end
+    
 end
