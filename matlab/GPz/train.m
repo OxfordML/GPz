@@ -12,6 +12,7 @@ theta = model.last.theta;
 muY = model.muY;
 muX = model.muX;
 T = model.T;
+wL = model.wL;
 
 n = size(X,1);
 
@@ -23,6 +24,7 @@ defaults =  {  200      inf         ones(n,1)   true(n,1)      []};
 X = bsxfun(@minus,X,muX)*T;
 
 Y = bsxfun(@minus,Y,muY);
+Y = bsxfun(@minus,Y,X*wL);
 
 if(strcmp(model.method,'ANN'))
     f = @(params) ANN(params,model,X,Y,omega,training,validation);
@@ -35,9 +37,9 @@ options.display = 'off';
 options.maxIter = maxIter;
 options.MaxFunEvals = inf;
 options.outputFcn = @(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond) callBack(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond,maxIter,maxAttempts,isempty(validation));
-start = tic;
+
 theta = minFunc(f,theta,options);
-toc(start)
+
 [~,~,w,SIGMAi] = f(theta);
 
 

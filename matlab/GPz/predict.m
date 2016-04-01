@@ -1,4 +1,4 @@
-function [mu,sigma,modelV,noiseV,PHI] = predict(X,model,whichSet)
+function [mu,sigma,nu,beta_i,PHI] = predict(X,model,whichSet)
     
     if(nargin<3||strcmp(whichSet,'best'))
         set = model.best;
@@ -9,6 +9,7 @@ function [mu,sigma,modelV,noiseV,PHI] = predict(X,model,whichSet)
     theta = set.theta;
     w = set.w;
     SIGMAi = set.SIGMAi;
+    wL = model.wL;
     
     muY = model.muY;
     
@@ -20,16 +21,18 @@ function [mu,sigma,modelV,noiseV,PHI] = predict(X,model,whichSet)
         [~,~,~,~,PHI,lnBeta] = GPz(theta,model,X,[],[],[],[]);
     end
     
-    mu = bsxfun(@plus,PHI*w,muY);
+    mu = PHI*w;
+    mu = bsxfun(@plus,mu,X*wL);
+    mu = bsxfun(@plus,mu,muY);
 
     [n,k] = size(mu);
     
-    modelV = zeros(n,k);
+    nu = zeros(n,k);
     for i=1:k
-        modelV(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+        nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
     end
     
-    noiseV = exp(-lnBeta);
-    sigma = modelV+noiseV;
+    beta_i = exp(-lnBeta);
+    sigma = nu+beta_i;
     
 end
