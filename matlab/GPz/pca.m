@@ -1,10 +1,21 @@
 function [mu,T,Ti,U,S] = pca(X,th)
 
+
 [n,m] = size(X);
 
-mu = mean(X);
+missing = isnan(X);
+X(missing) = 0;
+
+counts = n-sum(missing);
+
+mu = sum(X)./counts;
+
 X = bsxfun(@minus,X,mu);
-sigmas = X'*X;
+X(missing) = 0;
+
+missing = double(missing);
+
+sigmas = n*(X'*X)./(n-missing'*missing);
 
 [U,S] = eig(sigmas);
 
