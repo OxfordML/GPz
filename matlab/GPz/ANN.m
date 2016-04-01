@@ -80,7 +80,7 @@ beta = exp(lnBeta);
 
 alpha = exp(lnAlpha);
 
-variance = zeros(n,k);
+nu = zeros(n,k);
 w = zeros(a_dim,k);
 dwda = zeros(a_dim,k);
 SIGMAi = zeros(a_dim,a_dim,k);
@@ -98,7 +98,7 @@ for i=1:k
     SIGMAi(:,:,i) = (U/S)*U';
     logdet(i) = sum(log(diag(S)));
 
-    variance(:,i) = sum(PHI{end}.*(PHI{end}*SIGMAi(:,:,i)),2);
+    nu(:,i) = sum(PHI{end}.*(PHI{end}*SIGMAi(:,:,i)),2);
 
     w(:,i) = SIGMAi(:,:,i)*BxPHI'*Y(training,i);
 
@@ -121,7 +121,7 @@ if(nargout>2)
     return
 end
 
-dbeta = -0.5*beta.*(delta.^2+variance)+0.5;
+dbeta = -0.5*beta.*(delta.^2+nu)+0.5;
 db = sum(dbeta);
 
 if(heteroscedastic)
@@ -157,7 +157,7 @@ end
 nlogML = -sum(nlogML)/(n*k);
 grad = -grad/(n*k);
 
-sigma = variance+exp(-lnBeta);
+sigma = nu+exp(-lnBeta);
 
 trainRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(training)))/(n*k));
 trainLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
@@ -182,13 +182,13 @@ if(~isempty(validation))
         PHI = [PHI X(validation,:) ones(n,1)];
     end
     
-    variance = zeros(n,k);
+    nu = zeros(n,k);
     
     for i=1:k
-        variance(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+        nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
     end
     
-    sigma = variance+exp(-lnBeta);
+    sigma = nu+exp(-lnBeta);
 
     delta = PHI*w-Y(validation,:);
     

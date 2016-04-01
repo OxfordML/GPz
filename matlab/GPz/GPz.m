@@ -1,6 +1,5 @@
 function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,model,X,Y,omega,training,validation)
 
-
 k = model.k;
 m = model.m;
 method = model.method;
@@ -63,7 +62,7 @@ end
 beta = exp(lnBeta);
 alpha = exp(lnAlpha);
 
-variance = zeros(n,k);
+nu = zeros(n,k);
 w = zeros(a_dim,k);
 dwda = zeros(a_dim,k);
 SIGMAi = zeros(a_dim,a_dim,k);
@@ -82,7 +81,7 @@ for i=1:k
     SIGMAi(:,:,i) = (U/S)*U';
     logdet(i) = sum(log(diag(S)));
 
-    variance(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+    nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
 
     w(:,i) = SIGMAi(:,:,i)*BxPHI'*Y(training,i);
 
@@ -105,7 +104,7 @@ end
 dlnAlpha = dlnAlpha-(PHI'*(beta.*delta)).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
 dlnPHI= dlnPHI-((beta.*delta)*w(1:m,:)').*PHI(:,1:m);
 
-dbeta = -0.5*(beta.*delta.^2+beta.*variance)+0.5;
+dbeta = -0.5*(beta.*delta.^2+beta.*nu)+0.5;
 db = sum(dbeta);
 
 if(heteroscedastic)
@@ -155,7 +154,7 @@ end
 nlogML = -sum(nlogML)/(n*k);
 grad = -grad/(n*k);
 
-sigma = variance+exp(-lnBeta);
+sigma = nu+exp(-lnBeta);
 
 trainRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(training)))/(n*k));
 trainLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
@@ -177,13 +176,13 @@ if(~isempty(validation))
         PHI = [PHI X(validation,:) ones(n,1)];
     end
     
-    variance = zeros(n,k);
+    nu = zeros(n,k);
     
     for i=1:k
-        variance(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+        nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
     end
     
-    sigma = variance+exp(-lnBeta);
+    sigma = nu+exp(-lnBeta);
 
     delta = PHI*w-Y(validation,:);
     

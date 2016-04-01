@@ -56,7 +56,6 @@ X(:,filters+1:end) = log(X(:,filters+1:end));
 % get the weights for cost-sensitive learning
 omega = getOmega(Y,csl_method,binWidth); 
 
-
 % initialize the initial model
 model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'joint',joint,'decorrelate',decorrelate);
 
@@ -68,7 +67,7 @@ model = train(model,X,Y,'omega',omega,'training',training,'validation',validatio
 % model = train(model,X,Y,options);
 
 % use the model to generate predictions for the test set
-[mu,sigma,modelV,noiseV] = predict(X(testing,:),model);
+[mu,sigma,nu,beta_i] = predict(X(testing,:),model);
 
 
 %%%%%%%%%%%%%% Display Results %%%%%%%%%%%%%%%% 
@@ -104,11 +103,11 @@ figure;plot(x,bias(ind),'o-');xlabel('Percentage of Data');ylabel('BIAS');
 [centers,means,stds] = bin(Y(testing),Y(testing)-mu,20);
 figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel('Bias');
 
-[centers,means,stds] = bin(Y(testing),sqrt(modelV),20);
+[centers,means,stds] = bin(Y(testing),sqrt(nu),20);
 figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel('Model Uncertainty');
 
-[centers,means,stds] = bin(Y(testing),sqrt(noiseV),20);
+[centers,means,stds] = bin(Y(testing),sqrt(beta_i),20);
 figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel('Noise Uncertainty');
 
 % save output as comma seperated values (mean,sigma,model_variance,noise_variance)
-csvwrite([method,'_',num2str(m),'_',csl_method,'.csv'],[Y(testing) mu sigma modelV noiseV]);
+csvwrite([method,'_',num2str(m),'_',csl_method,'.csv'],[Y(testing) mu sigma nu beta_i]);
