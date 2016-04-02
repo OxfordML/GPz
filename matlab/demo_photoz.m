@@ -1,6 +1,4 @@
 
-rng(1);
-
 addpath GPz/
 
 addpath(genpath('minFunc_2012/'))       % path to minfunc

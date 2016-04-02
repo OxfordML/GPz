@@ -34,7 +34,7 @@ end
 
 P = reshape(theta(1:m*d),m,d);
 
-[PHI,lnBeta,GAMMA] = getPHI(X(training,:),omega(training,:),theta,model);
+[PHI,lnBeta,GAMMA,lnPHI] = getPHI(X(training,:),omega(training,:),theta,model);
 
 g_dim = length(GAMMA(:));
 
@@ -64,11 +64,13 @@ for i=1:k
     BxPHI = bsxfun(@times,PHI,beta(:,i));
 
     SIGMA = BxPHI'*PHI+diag(alpha(:,i));
-
-    [U,S,~] = svd(SIGMA);
-
-    SIGMAi(:,:,i) = (U/S)*U';
-    logdet(i) = sum(log(diag(S)));
+    
+    L=chol(SIGMA);
+    Li=L\speye(a_dim);
+    
+    SIGMAi(:,:,i)=Li*Li';
+    
+    logdet(i) = 2*sum(log(diag(L)));
 
     nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
 
@@ -83,24 +85,26 @@ end
 
 delta = PHI*w-Y(training,:);
 
-nlogML = -0.5*sum(beta.*delta.^2)+0.5*sum(lnBeta)-0.5*sum(alpha.*w.^2)+0.5*sum(lnAlpha)-0.5*logdet;
+beta_x_delta = beta.*delta;
+
+nlogML = -0.5*sum(beta_x_delta.*delta)+0.5*sum(lnBeta)-0.5*sum(alpha.*w.^2)+0.5*sum(lnAlpha)-0.5*logdet-0.5*n*log(2*pi);
 
 if(nargout>2)
     grad = 0;
     return
 end
 
-dlnAlpha = dlnAlpha-(PHI'*(beta.*delta)).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
-dlnPHI= dlnPHI-((beta.*delta)*w(1:m,:)').*PHI(:,1:m);
+dlnAlpha = dlnAlpha-(PHI'*beta_x_delta).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
+dlnPHI= dlnPHI-(beta_x_delta*w(1:m,:)').*PHI(:,1:m);
 
-dbeta = -0.5*(beta.*delta.^2+beta.*nu)+0.5;
+dbeta = -0.5*(beta_x_delta.*delta+beta.*nu)+0.5;
 db = sum(dbeta);
 
 if(heteroscedastic)
     u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
     lnEta = reshape(theta(m*d+g_dim+a_dim*k+k+m*k+1:m*d+g_dim+a_dim*k+k+m*k+m*k),m,k);
     eta = exp(lnEta);
-    nlogML = nlogML-0.5*sum(u.^2.*eta)+0.5*sum(lnEta);
+    nlogML = nlogML-0.5*sum(u.^2.*eta)+0.5*sum(lnEta)-0.5*m*log(2*pi);
     du = PHI(:,1:m)'*dbeta-u.*eta;
     dlnEta = -0.5*eta.*u.^2+0.5;
     dlnPHI = dlnPHI+(dbeta*u').*PHI(:,1:m);    
@@ -110,28 +114,29 @@ dP = zeros(size(P));
 dGAMMA = zeros(size(GAMMA));
 
 for j=1:m
+    
     Delta = bsxfun(@minus,X(training,:),P(j,:));
+    dlnPHIjTxDelta = dlnPHI(:,j)'*Delta;
+    
     switch(method)
         case 'GL'
-            dP(j,:) = dlnPHI(:,j)'*Delta*GAMMA^2;
-            dGAMMA = dGAMMA-sum(dlnPHI(:,j).*sum(Delta.^2,2))*GAMMA;
+            dP(j,:) = dlnPHIjTxDelta*GAMMA^2;
+            dGAMMA = dGAMMA+2*sum(dlnPHI(:,j).*lnPHI(:,j))*GAMMA^-1;
         case 'VL'
-            dP(j,:) = dlnPHI(:,j)'*Delta*GAMMA(j)^2;
-            dGAMMA(j) = -sum(dlnPHI(:,j).*sum(Delta.^2,2))*GAMMA(j);
+            dP(j,:) = dlnPHIjTxDelta*GAMMA(j)^2;
+            dGAMMA(j) = 2*sum(dlnPHI(:,j).*lnPHI(:,j))*GAMMA(j)^-1;
         case 'GD'
-            dP(j,:) = dlnPHI(:,j)'*bsxfun(@times,Delta,GAMMA.^2);
-            dGAMMA = dGAMMA-sum(bsxfun(@times,bsxfun(@times,Delta,dlnPHI(:,j)),GAMMA).*Delta);
+            dP(j,:) = dlnPHIjTxDelta.*GAMMA.^2;
+            dGAMMA = dGAMMA-sum((dlnPHI(:,j)*GAMMA).*Delta.^2);
         case 'VD'
-            dP(j,:) = dlnPHI(:,j)'*bsxfun(@times,Delta,GAMMA(j,:).^2);
-            dGAMMA(j,:) = -sum(bsxfun(@times,bsxfun(@times,Delta,dlnPHI(:,j)),GAMMA(j,:)).*Delta);
+            dP(j,:) = dlnPHIjTxDelta.*GAMMA(j,:).^2;
+            dGAMMA(j,:) = -sum((dlnPHI(:,j)*GAMMA(j,:)).*Delta.^2);
         case 'GC'
-            dP(j,:) = dlnPHI(:,j)'*Delta*(GAMMA'*GAMMA);
-            dGj = -GAMMA*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
-            dGAMMA = dGAMMA+dGj;
+            dP(j,:) = dlnPHIjTxDelta*(GAMMA'*GAMMA);
+            dGAMMA = dGAMMA-GAMMA*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
         case 'VC'
-            dP(j,:) = dlnPHI(:,j)'*Delta*(GAMMA(:,:,j)'*GAMMA(:,:,j));
-            dGj = -GAMMA(:,:,j)*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
-            dGAMMA(:,:,j) = dGj;
+            dP(j,:) = dlnPHIjTxDelta*(GAMMA(:,:,j)'*GAMMA(:,:,j));
+            dGAMMA(:,:,j) = -GAMMA(:,:,j)*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
     end
 end
 

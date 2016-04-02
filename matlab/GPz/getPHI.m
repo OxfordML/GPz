@@ -1,4 +1,4 @@
-function [PHI,lnBeta,GAMMA] = getPHI(X,omega,theta,model)
+function [PHI,lnBeta,GAMMA,lnPHI] = getPHI(X,omega,theta,model)
 
     [n,d] = size(X);
     
@@ -29,7 +29,7 @@ function [PHI,lnBeta,GAMMA] = getPHI(X,omega,theta,model)
             lnPHI = zeros(n,m);
             for j = 1:m
                 Delta = bsxfun(@minus,X,P(j, :));
-                lnPHI(:,j) = -0.5*sum(power(bsxfun(@times,Delta,GAMMA),2),2);
+                lnPHI(:,j) = -0.5*sum(bsxfun(@times,Delta,GAMMA).^2,2);
             end
         case 'VD'
 
@@ -37,7 +37,7 @@ function [PHI,lnBeta,GAMMA] = getPHI(X,omega,theta,model)
             lnPHI = zeros(n,m);
             for j = 1:m
                 Delta = bsxfun(@minus,X,P(j, :));
-                lnPHI(:,j) = -0.5*sum(power(bsxfun(@times,Delta,GAMMA(j,:)),2),2);
+                lnPHI(:,j) = -0.5*sum(bsxfun(@times,Delta,GAMMA(j,:)).^2,2);
             end
             
         case 'GC'
