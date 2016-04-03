@@ -64,14 +64,12 @@ for i=1:k
     BxPHI = bsxfun(@times,PHI,beta(:,i));
 
     SIGMA = BxPHI'*PHI+diag(alpha(:,i));
-    
-    L=chol(SIGMA);
-    Li=L\speye(a_dim);
-    
-    SIGMAi(:,:,i)=Li*Li';
-    
-    logdet(i) = 2*sum(log(diag(L)));
 
+    [U,S] = svd(SIGMA);
+    
+    SIGMAi(:,:,i) = (U/S)*U';
+    logdet(i) = sum(log(abs(diag(S))));
+    
     nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
 
     w(:,i) = SIGMAi(:,:,i)*BxPHI'*Y(training,i);
