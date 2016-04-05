@@ -13,7 +13,6 @@ m = 200                     # number of basis functions to use
 n = 4000
 
 X = linspace(-10, 10, n)
-Xs = X.reshape(n, 1)
 X = X[(X<-6)|(X>-3)]
 
 n = len(X)
@@ -22,6 +21,8 @@ X = X.reshape(n, 1)
 f_noise = (0.01+3 * sin(X) * (1 + exp(-0.1 * X)) ** -1) ** 2
 Y = 10*sinc(2*X) + random.randn(n, 1) * f_noise
 
+Xs = linspace(-12, 12, n)
+Xs = Xs.reshape(n, 1)
 
 ########### Start Script ###########
 
@@ -46,10 +47,10 @@ w = model.w
 [U,S,V] = svd(SIGMAi[:,:,0])
 R = dot(U,diag(sqrt(S)))
 
-k = 50
+k = 20
 
 ws = dot(R,random.randn(len(w),k))+w
-mus = dot(PHI,ws)+muY
+mus = dot(PHI,ws)+dot(Xs,model.wL)+muY
 plt.plot(Xs,mus)
 plt.plot(Xs, mu, 'r-',linewidth=2)
 plt.show()

@@ -144,7 +144,10 @@ class GP:
 
         Yt = Y-self.muY
 
-        b = -log(var(Yt[training]))*ones((1,k))
+        self.wL = dot(inv(dot(Xt[training, :].T,Xt[training,:])+eye(d)*var(Yt[training,:])),dot(Xt[training,:].T,Yt[training,:]))
+        Yt = Yt-dot(X,self.wL)
+
+        b = -log(var(Yt[training,:]))*ones((1,k))
 
         if joint:
             a_dim = m+d+1
@@ -176,7 +179,7 @@ class GP:
             gamma = sqrt(2*power(m,1./d) / mean(Dxy(X[training, :], P),0))
 
             if method == 'GL':
-                GAMMA = gamma
+                GAMMA = mean(gamma)
             elif method == 'VL':
                 GAMMA = gamma
             elif method == 'GD':
@@ -243,6 +246,7 @@ class GP:
             Xt = X
 
         Yt = Y-self.muY
+        Yt = Yt-dot(Xt,self.wL)
 
         if self.method == 'ANN':
             fx = self.ANN_fun
@@ -291,7 +295,7 @@ class GP:
         else:
             PHI,lnBeta = self.GP_fun(theta, Xt, [])
 
-        mu = dot(PHI, w) + self.muY
+        mu = dot(PHI, w) +dot(Xt, self.wL)+ self.muY
 
         modelV = zeros((n,self.k))
 
@@ -577,28 +581,20 @@ class GP:
 
         P = theta[0:m * d].reshape(m, d)
 
-        GAMMA,lnPHI,g_dim,_ = self.getGAMMA_lnPHI(theta,X[training,:],P,m)
+        PHI,lnBeta,GAMMA,lnPHI = self.getPHI(theta,X[training,:])
 
-        PHI = exp(lnPHI)
-
-        lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim,k)
-        b = theta[m*d+g_dim+a_dim*k:m*d+g_dim+a_dim*k+k].reshape(1,k)
-
-        alpha = exp(lnAlpha)
-
-        lnBeta = dot(ones((n,1)),b)+log(omega[training,:])
-
-        if(heteroscedastic):
-            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m,k)
-            lnBeta = dot(PHI, u)+lnBeta
-
-        beta = exp(lnBeta)
-
-        if (joint):
-            PHI = hstack([PHI, X[training, :], ones((n, 1))])
+        lnBeta = lnBeta+log(omega[training,:])
 
         if Y==[]:
             return PHI,lnBeta
+
+        g_dim = len(GAMMA.flatten())
+
+        lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim,k)
+
+        alpha = exp(lnAlpha)
+
+        beta = exp(lnBeta)
 
         w = zeros((a_dim,k))
         SIGMAi = zeros((a_dim,a_dim,k))
@@ -615,6 +611,7 @@ class GP:
             SIGMAi[:,:,i] = dot(Li.T,Li)
             logdet[0,i] = -2*sum(log(diag(Li)))
 
+
             w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
 
 
@@ -623,9 +620,10 @@ class GP:
         nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
 
         if(heteroscedastic):
+            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
             lnEta = theta[m*d+g_dim+a_dim*k+k+m*k:m*d+g_dim+a_dim*k+k+m*k+m*k].reshape(m, k)
             eta = exp(lnEta)
-            nlogML = nlogML - 0.5 * sum(u ** 2 * eta,0) + 0.5 * sum(lnEta,0)
+            nlogML = nlogML - 0.5 * sum(u ** 2 * eta,0) + 0.5 * sum(lnEta,0)- (m / 2) * log(2 * pi)
 
 
         nlogML = -sum(nlogML)/(n*k)
@@ -648,17 +646,9 @@ class GP:
             if validation is not None:
                 n = sum(validation)
 
-                GAMMA,lnPHI,g_dim,_ = self.getGAMMA_lnPHI(theta,X[validation,:],P,m)
+                PHI,lnBeta,_,_= self.getPHI(theta,X[validation,:])
 
-                PHI = exp(lnPHI)
-
-                lnBeta = dot(ones((n,1)),b)+log(omega[validation])
-
-                if(heteroscedastic):
-                    lnBeta = dot(PHI, u)+lnBeta
-
-                if (joint):
-                    PHI = hstack([PHI, X[validation, :], ones((n, 1))])
+                lnBeta = lnBeta+log(omega[validation,:])
 
                 variance = zeros((n,k))
                 for i in range(k):
@@ -698,20 +688,14 @@ class GP:
 
         P = theta[0:m * d].reshape(m, d)
 
-        GAMMA,lnPHI,g_dim,dGAMMA = self.getGAMMA_lnPHI(theta,X[training,:],P,m)
-        PHI = exp(lnPHI)
+        PHI,lnBeta,GAMMA,lnPHI = self.getPHI(theta,X[training,:])
+
+        lnBeta = lnBeta+log(omega[training,:])
+
+        g_dim = len(GAMMA.flatten())
 
         lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim, k)
-        b = theta[m*d+g_dim+a_dim*k:m*d+g_dim+a_dim*k+k].reshape(1, k)
 
-        lnBeta = dot(ones((n,1)),b)+log(omega[training,:])
-
-        if(heteroscedastic):
-            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
-            lnBeta = lnBeta+dot(PHI, u)
-
-        if (joint):
-            PHI = hstack([PHI, X[training, :], ones((n, 1))])
 
         beta = exp(lnBeta)
 
@@ -754,6 +738,7 @@ class GP:
         db = sum(dbeta,0)
 
         if(heteroscedastic):
+            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
             lnEta = theta[m*d+g_dim+a_dim*k+k+m*k:m*d+g_dim+a_dim*k+k+m*k+m*k].reshape(m, k)
             eta = exp(lnEta)
             du = dot(PHI[:, 0:m].T, dbeta)-u*eta
@@ -761,6 +746,7 @@ class GP:
             dlnPHI = dlnPHI+dot(dbeta, u.T) * PHI[:, 0:m]
 
         dP = zeros((m, d))
+        dGAMMA = zeros(GAMMA.shape)
 
         for j in range(m):
             Delta = X[training, :] - P[j, :]
@@ -793,72 +779,94 @@ class GP:
 
         return -grad/(n*k)
 
-    def getGAMMA_lnPHI(self,theta,X,P,m):
-
-        method = self.method
+    def getPHI(self,theta,X):
 
         n,d = X.shape
 
+        m = self.m
+        method = self.method
+        k = self.k
+
+        if(self.joint):
+            a_dim = m+d+1
+        else:
+            a_dim = m
+
+        P = theta[0:m * d].reshape(m, d)
+
         if(method=='GL'):
-            g_dim = 1
-            dGAMMA = 0
+
             GAMMA = theta[m*d]
             lnPHI = -0.5 * Dxy(X, P) * GAMMA ** 2
 
-
         elif(method=='VL'):
-            g_dim = m
-            dGAMMA = zeros(m)
+
             GAMMA = theta[m*d:m*d+m]
             lnPHI = -0.5 * Dxy(X, P) * GAMMA ** 2
+
         elif(method=='GD'):
-            g_dim = d
-            dGAMMA = zeros((1, d))
+
             GAMMA = theta[m*d:m*d+d].reshape(1, d)
 
             lnPHI = zeros((n, m))
             for j in range(m):
                 Delta = X - P[j, :]
-                lnPHI[:, j] = -0.5 * sum(power(Delta*GAMMA, 2), 1)
+                lnPHI[:, j] = -0.5 * sum((Delta*GAMMA)**2, 1)
+
         elif(method=='VD'):
-            g_dim = m*d
+
             GAMMA = theta[m*d:m*d+m*d].reshape(m, d)
-            dGAMMA = zeros((m, d))
+
             lnPHI = zeros((n, m))
             for j in range(m):
                 Delta = X - P[j, :]
-                lnPHI[:, j] = -0.5 * sum(power(Delta*GAMMA[j,:], 2), 1)
+                lnPHI[:, j] = -0.5 * sum((Delta*GAMMA[j,:])**2, 1)
+
         elif(method=='GC'):
-            g_dim = d*d
-            dGAMMA = zeros((d, d))
+
             GAMMA = theta[m*d:m*d+d*d].reshape(d, d)
 
             lnPHI = zeros((n, m))
 
             for j in range(m):
                 Delta = X - P[j, :]
-                lnPHI[:, j] = -0.5 * sum(power(dot(Delta, GAMMA.T), 2), 1)
+                lnPHI[:, j] = -0.5 * sum(dot(Delta, GAMMA.T)**2, 1)
         else:
-            g_dim = d*d*m
-            dGAMMA = zeros((d, d, m))
+
             GAMMA = theta[m*d:m*d+d*d*m].reshape(d, d, m)
 
             lnPHI = zeros((n, m))
 
             for j in range(m):
                 Delta = X - P[j, :]
-                lnPHI[:, j] = -0.5 * sum(power(dot(Delta, GAMMA[:,:,j].T), 2), 1)
+                lnPHI[:, j] = -0.5 * sum(dot(Delta, GAMMA[:,:,j].T)**2, 1)
 
-        return GAMMA,lnPHI,g_dim,dGAMMA
+
+        g_dim = len(GAMMA.flatten())
+
+        b = theta[m*d+g_dim+a_dim*k:m*d+g_dim+a_dim*k+k].reshape(1, k)
+
+        lnBeta = dot(ones((n,1)),b)
+
+        PHI = exp(lnPHI)
+
+        if(self.heteroscedastic):
+            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
+            lnBeta = lnBeta+dot(PHI, u)
+
+        if (self.joint):
+            PHI = hstack([PHI, X, ones((n, 1))])
+
+        return PHI,lnBeta,GAMMA,lnPHI
 
     def callbackF(self,theta):
 
         if (self.iter==1):
             if self.validLL is None:
-                print  '{0:4s}\t{1:9s}\t\t{2:9s}\t\t{3:9s}\t\t{4:9s}'.format('Iter', ' logML/n', ' trainRMSE', ' trainLL', ' Time')
+                print  '{0:4s}\t{1:9s}\t\t{2:9s}\t\t{3:9s}\t\t{4:9s}'.format('Iter', ' logML/n', ' Train RMSE', ' Train MLL', ' Time')
             else:
-                print  '{0:4s}\t{1:9s}\t\t{2:9s}\t\t{3:9s}\t\t{4:9s}\t\t{5:9s}\t\t{6:9s}'.format('Iter', ' logML/n', ' trainRMSE',
-                                                                                   ' trainRMSE/n', ' validRMSE', ' validLL', ' Time')
+                print  '{0:4s}\t{1:9s}\t\t{2:9s}\t\t{3:9s}\t\t{4:9s}\t\t{5:9s}\t\t{6:9s}'.format('Iter', ' logML/n', ' Train RMSE',
+                                                                                   ' Train RMSE/n', ' Valid RMSE', ' Valid MLL', ' Time')
         if self.validLL is None:
             print '{0:4d}\t{1: 1.7e}\t{2: 1.7e}\t{3: 1.7e}\t{4: 1.7e}'.format(self.iter, -self.nlogML, self.trainRMSE,self.trainLL,time.time()-self.timer)
             self.best_theta = theta
