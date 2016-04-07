@@ -34,7 +34,9 @@ end
 
 P = reshape(theta(1:m*d),m,d);
 
-[PHI,lnBeta,GAMMA,lnPHI] = getPHI(X(training,:),omega(training,:),theta,model);
+[PHI,lnBeta,GAMMA,lnPHI] = getPHI(X(training,:),theta,model);
+
+lnBeta = bsxfun(@plus,lnBeta,log(omega(training,:)));
 
 g_dim = length(GAMMA(:));
 
@@ -156,7 +158,9 @@ if(~isempty(validation))
     
     n = sum(validation);
 
-    [PHI,lnBeta] = getPHI(X(validation,:),omega(validation,:),theta,model);
+    [PHI,lnBeta] = getPHI(X(validation,:),theta,model);
+    
+    lnBeta = bsxfun(@plus,lnBeta,log(omega(validation,:)));
     
     nu = zeros(n,k);
     

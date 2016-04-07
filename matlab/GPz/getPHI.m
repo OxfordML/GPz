@@ -1,4 +1,4 @@
-function [PHI,lnBeta,GAMMA,lnPHI] = getPHI(X,omega,theta,model)
+function [PHI,lnBeta,GAMMA,lnPHI] = getPHI(X,theta,model)
 
     [n,d] = size(X);
     
@@ -65,7 +65,7 @@ function [PHI,lnBeta,GAMMA,lnPHI] = getPHI(X,omega,theta,model)
     
     b = theta(m*d+g_dim+a_dim*k+1:m*d+g_dim+a_dim*k+k)';
     
-    lnBeta = bsxfun(@plus,log(omega),repmat(b,n,1));
+    lnBeta = repmat(b,n,1);
     
     PHI = exp(lnPHI);
     
