@@ -1,5 +1,5 @@
 from sklearn.decomposition import PCA
-from scipy.optimize import fmin_bfgs
+from scipy.optimize import minimize
 from numpy.linalg import inv,cholesky
 from numpy import *
 import matplotlib.pyplot as plt
@@ -114,7 +114,7 @@ class GP:
         n,d = X.shape
         _,k = Y.shape
 
-        self.k = k;
+        self.k = k
         layers = hstack([d,self.m])
         self.layers = layers
         self.m = self.layers[-1]
@@ -169,7 +169,7 @@ class GP:
             theta = concatenate([theta.flatten(), lnAlpha.flatten(), b.flatten()])
 
 
-            f = self.ANN_fun
+            f = self.ANN
         else:
 
             pca4k = PCA(whiten=True)
@@ -194,7 +194,7 @@ class GP:
                     GAMMA[:, :, j] = eye(d) * gamma[j]
 
             theta = concatenate([P.flatten(), GAMMA.flatten(), lnAlpha.flatten(), b.flatten()])
-            f = self.GP_fun
+            f = self.GPz
 
         if(heteroscedastic):
 
@@ -249,18 +249,17 @@ class GP:
         Yt = Yt-dot(Xt,self.wL)
 
         if self.method == 'ANN':
-            fx = self.ANN_fun
-            gx = self.ANN_grad
+            fx = self.ANN
         else:
-            fx = self.GP_fun
-            gx = self.GP_grad
+            fx = self.GPz
 
         self.iter = 1
         self.timer = time.time()
         self.validLL = None
 
-        self.theta = fmin_bfgs(fx, self.theta, fprime=gx, args=(Xt,Yt, omega, training, validation),callback=self.callbackF, disp=False, maxiter=maxIter)
+        result= minimize(fx,self.theta,method='BFGS',jac=True,args=(Xt,Yt, omega, training, validation),callback=self.callbackF,options={'disp': False,'maxiter':maxIter})
 
+        self.theta = result.x
         w, SIGMAi = fx(self.theta, Xt, Yt, omega,training, [], True)
 
         self.w = w
@@ -291,9 +290,9 @@ class GP:
             Xt = X
 
         if self.method == 'ANN':
-            PHI,lnBeta = self.ANN_fun(theta, Xt, [])
+            PHI,lnBeta = self.ANN(theta, Xt, [])
         else:
-            PHI,lnBeta = self.GP_fun(theta, Xt, [])
+            PHI,lnBeta = self.GPz(theta, Xt, [])
 
         mu = dot(PHI, w) +dot(Xt, self.wL)+ self.muY
 
@@ -308,7 +307,7 @@ class GP:
 
         return mu,sigma,modelV, noiseV,PHI
 
-    def ANN_fun(self,theta, X, Y, omega=None, training=None, validation=None, returnModel=False):
+    def ANN(self,theta, X, Y, omega=None, training=None, validation=None,returnModel=False):
 
         layers = self.layers
         m = layers[-1]
@@ -342,7 +341,6 @@ class GP:
         ind = cumsum(hstack([0,layers[0:-1]*layers[1:]+layers[1:]]))
 
         for i in range(n_layers):
-
             W[i] = theta[ind[i]:ind[i]+layers[i]*layers[i+1]].reshape(layers[i],layers[i+1])
             bias[i] = theta[ind[i]+layers[i]*layers[i+1]:ind[i]+layers[i]*layers[i+1]+layers[i+1]].reshape(1,layers[i+1])
             PHI[i+1] = tanh(dot(PHI[i],W[i])+bias[i])
@@ -366,7 +364,11 @@ class GP:
         alpha = exp(lnAlpha)
 
         w = zeros((a_dim,k))
+        dwda = zeros((a_dim,k))
         SIGMAi = zeros((a_dim,a_dim,k))
+        variance = zeros((n,k))
+        dPHI = zeros((n,m))
+        dlnAlpha = zeros((a_dim,k))
         logdet = zeros((1,k))
 
         for i in range(k):
@@ -382,139 +384,6 @@ class GP:
 
             w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
 
-
-        delta = dot(PHI[-1], w) - Y[training, :]
-
-        nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
-
-        if(heteroscedastic):
-            lnEta = theta[ind[-1]+a_dim*k+k+m*k:ind[-1]+a_dim*k+k+m*k+m*k].reshape(m, k)
-            eta = exp(lnEta)
-            nlogML = nlogML - 0.5 * sum(u ** 2 * eta,0) + 0.5 * sum(lnEta,0)
-
-
-        nlogML = -sum(nlogML)/(n*k)
-
-        self.nlogML = nlogML
-
-        if returnModel:
-            return w, SIGMAi
-        else:
-
-            variance = zeros((n,k))
-
-            for i in range(k):
-                variance[:,i:i+1] = sum(dot(PHI[-1],SIGMAi[:,:,i]) * PHI[-1], 1).reshape(n, 1)
-
-            sigma = variance+exp(-lnBeta)
-
-            self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
-            self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
-
-            if validation is not None:
-
-                n = sum(validation)
-
-                PHI = X[validation,:]
-
-                for i in range(n_layers):
-                    PHI = tanh(dot(PHI,W[i])+bias[i])
-
-
-                lnBeta = dot(ones((n,1)),b)+log(omega[validation])
-
-                if(heteroscedastic):
-                    lnBeta = dot(PHI, u)+lnBeta
-
-                if (joint):
-                    PHI = hstack([PHI, X[validation, :], ones((n, 1))])
-
-                variance = zeros((n,k))
-                for i in range(k):
-                    variance[:,i:i+1] = sum(dot(PHI,SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
-
-                sigma = variance+exp(-lnBeta)
-
-                delta = dot(PHI, w) - Y[validation, :]
-
-                self.validRMSE = sqrt(mean(omega[validation] * delta ** 2))
-                self.validLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
-
-            return nlogML
-
-    def ANN_grad(self,theta, X, Y, omega=None, training=None, validation=None):
-
-        layers = self.layers
-        m = layers[-1]
-        n_layers = len(layers)-1
-
-        k = self.k
-        joint = self.joint
-        heteroscedastic = self.heteroscedastic
-
-        n,d = X.shape
-
-        if training is None:
-            training = ones(n, dtype=bool)
-
-        if omega is None:
-            omega = ones((n, 1))
-
-        n = sum(training)
-
-        if(joint):
-            a_dim = m+d+1
-        else:
-            a_dim = m
-
-        PHI = empty(n_layers+1, dtype=object)
-        PHI[0] = X[training,:]
-
-        W = empty(n_layers, dtype=object)
-        bias = empty(n_layers, dtype=object)
-
-        ind = cumsum(hstack([0,layers[0:-1]*layers[1:]+layers[1:]]))
-
-        for i in range(n_layers):
-            W[i] = theta[ind[i]:ind[i]+layers[i]*layers[i+1]].reshape(layers[i],layers[i+1])
-            bias[i] = theta[ind[i]+layers[i]*layers[i+1]:ind[i]+layers[i]*layers[i+1]+layers[i+1]].reshape(1,layers[i+1])
-            PHI[i+1] = tanh(dot(PHI[i],W[i])+bias[i])
-
-        lnAlpha = theta[ind[-1]:ind[-1]+a_dim*k].reshape(a_dim,k)
-        b = theta[ind[-1]+a_dim*k:ind[-1]+a_dim*k+k].reshape(1,k)
-
-        lnBeta = log(omega[training,:])+dot(ones((n,1)),b)
-
-        if(heteroscedastic):
-            u = theta[ind[-1]+a_dim*k+k:ind[-1]+a_dim*k+k+m*k].reshape(m, k)
-            lnBeta = dot(PHI[-1], u)+lnBeta
-
-        if (joint):
-            PHI[-1] = hstack([PHI[-1], X[training, :], ones((n, 1))])
-
-
-        beta = exp(lnBeta)
-        alpha = exp(lnAlpha)
-
-        w = zeros((a_dim,k))
-        dwda = zeros((a_dim,k))
-        SIGMAi = zeros((a_dim,a_dim,k))
-        variance = zeros((n,k))
-        dPHI = zeros((n,m))
-        dlnAlpha = zeros((a_dim,k))
-
-        for i in range(k):
-            A = diag(alpha[:, i])
-
-            BxPHI = PHI[-1] * beta[:,i:i+1]
-
-            SIGMA = dot(BxPHI.T, PHI[-1]) + A
-            Li = inv(cholesky(SIGMA))
-
-            SIGMAi[:,:,i] = dot(Li.T,Li)
-
-            w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
-
             variance[:,i:i+1] = sum(dot(PHI[-1],SIGMAi[:,:,i]) * PHI[-1], 1).reshape(n, 1)
 
             dwda[:,i:i+1] = -dot(SIGMAi[:,:,i],alpha[:,i:i+1]*w[:,i:i+1])
@@ -522,8 +391,12 @@ class GP:
             dPHI = dPHI-dot(BxPHI,SIGMAi[:,0:m,i])*(1-PHI[-1][:,0:m]**2)
             dlnAlpha[:,i:i+1] = -0.5*diag(SIGMAi[:,:,i]).reshape(a_dim,1) * alpha[:,i:i+1]
 
+        if returnModel:
+            return w, SIGMAi
 
         delta = dot(PHI[-1], w) - Y[training, :]
+
+        nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
 
         dPHI = dPHI-dot(delta*beta,w[0:m,:].T)*(1-PHI[-1][:,0:m]**2)
 
@@ -536,6 +409,10 @@ class GP:
             du = dot(PHI[-1][:,0:m].T,dbeta)-u*eta
             dlnEta = -0.5*eta*u**2+0.5
             dPHI = dPHI+dot(dbeta,u.T)*(1-PHI[-1][:,0:m]**2)
+
+        nlogML = -sum(nlogML)/(n*k)
+
+        self.nlogML = nlogML
 
         dlnAlpha = dlnAlpha-dot(PHI[-1].T,beta*delta)*dwda - alpha * w * dwda - 0.5*alpha * w ** 2  + 0.5
 
@@ -555,84 +432,35 @@ class GP:
         if(heteroscedastic):
             grad = concatenate([grad.flatten(),du.flatten(),dlnEta.flatten()])
 
-        return -grad/(n*k)
+        grad = -grad/(n*k)
 
-    def GP_fun(self,theta, X, Y, omega=None, training=None, validation=None, returnModel=False):
-
-        k = self.k
-        m = self.m
-        joint = self.joint
-        heteroscedastic = self.heteroscedastic
-
-        n,d = X.shape
-
-        if training is None:
-            training = ones(n, dtype=bool)
-
-        if omega is None:
-            omega = ones((n, 1))
-
-        n = sum(training)
-
-        if(joint):
-            a_dim = m+d+1
-        else:
-            a_dim = m
-
-        P = theta[0:m * d].reshape(m, d)
-
-        PHI,lnBeta,GAMMA,lnPHI = self.getPHI(theta,X[training,:])
-
-        lnBeta = lnBeta+log(omega[training,:])
-
-        if Y==[]:
-            return PHI,lnBeta
-
-        g_dim = len(GAMMA.flatten())
-
-        lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim,k)
-
-        alpha = exp(lnAlpha)
-
-        beta = exp(lnBeta)
-
-        w = zeros((a_dim,k))
-        SIGMAi = zeros((a_dim,a_dim,k))
-        logdet = zeros((1,k))
+        variance = zeros((n,k))
 
         for i in range(k):
-            A = diag(alpha[:, i])
+            variance[:,i:i+1] = sum(dot(PHI[-1],SIGMAi[:,:,i]) * PHI[-1], 1).reshape(n, 1)
 
-            BxPHI = PHI * beta[:,i:i+1]
+        sigma = variance+exp(-lnBeta)
 
-            SIGMA = dot(BxPHI.T, PHI) + A
-            Li = inv(cholesky(SIGMA))
+        self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
+        self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
 
-            SIGMAi[:,:,i] = dot(Li.T,Li)
-            logdet[0,i] = -2*sum(log(diag(Li)))
+        if validation is not None:
 
+            n = sum(validation)
 
-            w[:,i:i+1]= dot(SIGMAi[:,:,i], dot(BxPHI.T, Y[training,i:i+1]))
+            PHI = X[validation,:]
 
-
-        delta = dot(PHI, w) - Y[training, :]
-
-        nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
-
-        if(heteroscedastic):
-            u = theta[m*d+g_dim+a_dim*k+k:m*d+g_dim+a_dim*k+k+m*k].reshape(m, k)
-            lnEta = theta[m*d+g_dim+a_dim*k+k+m*k:m*d+g_dim+a_dim*k+k+m*k+m*k].reshape(m, k)
-            eta = exp(lnEta)
-            nlogML = nlogML - 0.5 * sum(u ** 2 * eta,0) + 0.5 * sum(lnEta,0)- (m / 2) * log(2 * pi)
+            for i in range(n_layers):
+                PHI = tanh(dot(PHI,W[i])+bias[i])
 
 
-        nlogML = -sum(nlogML)/(n*k)
+            lnBeta = dot(ones((n,1)),b)+log(omega[validation])
 
-        self.nlogML = nlogML
+            if(heteroscedastic):
+                lnBeta = dot(PHI, u)+lnBeta
 
-        if returnModel:
-            return w, SIGMAi
-        else:
+            if (joint):
+                PHI = hstack([PHI, X[validation, :], ones((n, 1))])
 
             variance = zeros((n,k))
             for i in range(k):
@@ -640,30 +468,14 @@ class GP:
 
             sigma = variance+exp(-lnBeta)
 
-            self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
-            self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
+            delta = dot(PHI, w) - Y[validation, :]
 
-            if validation is not None:
-                n = sum(validation)
+            self.validRMSE = sqrt(mean(omega[validation] * delta ** 2))
+            self.validLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
 
-                PHI,lnBeta,_,_= self.getPHI(theta,X[validation,:])
+        return nlogML,grad
 
-                lnBeta = lnBeta+log(omega[validation,:])
-
-                variance = zeros((n,k))
-                for i in range(k):
-                    variance[:,i:i+1] = sum(dot(PHI,SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
-
-                sigma = variance+exp(-lnBeta)
-
-                delta = dot(PHI, w) - Y[validation, :]
-
-                self.validRMSE = sqrt(mean(omega[validation] * delta ** 2))
-                self.validLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
-
-            return nlogML
-
-    def GP_grad(self,theta, X, Y, omega=None, training=None, validation=None):
+    def GPz(self,theta, X, Y, omega=None, training=None, validation=None,returnModel=False):
 
         k = self.k
         m = self.m
@@ -692,6 +504,9 @@ class GP:
 
         lnBeta = lnBeta+log(omega[training,:])
 
+        if Y==[]:
+            return PHI,lnBeta
+
         g_dim = len(GAMMA.flatten())
 
         lnAlpha = theta[m*d+g_dim:m*d+g_dim+a_dim*k].reshape(a_dim, k)
@@ -707,6 +522,7 @@ class GP:
         SIGMAi = zeros((a_dim,a_dim,k))
         dlnPHI = zeros((n,m))
         dlnAlpha = zeros((a_dim,k))
+        logdet = zeros((1,k))
 
         for i in range(k):
 
@@ -718,6 +534,7 @@ class GP:
             Li = inv(cholesky(SIGMA))
 
             SIGMAi[:,:,i] = dot(Li.T,Li)
+            logdet[0,i] = -2*sum(log(diag(Li)))
 
             variance[:,i:i+1] = sum(dot(PHI, SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
 
@@ -728,7 +545,12 @@ class GP:
             dlnPHI =  dlnPHI-dot(BxPHI, SIGMAi[:, 0:m,i]) * PHI[:, 0:m]
             dlnAlpha[:,i:i+1] = -0.5*diag(SIGMAi[:,:,i]).reshape(a_dim,1) * alpha[:,i:i+1]
 
+        if returnModel:
+            return w, SIGMAi
+
         delta = dot(PHI, w) - Y[training,:]
+
+        nlogML = -0.5 * sum(delta ** 2 * beta,0) + 0.5 * sum(lnBeta,0) - 0.5 * sum(w ** 2 * alpha,0) + 0.5 * sum(lnAlpha,0) - 0.5 * logdet - (n / 2) * log(2 * pi)
 
         dlnPHI = dlnPHI -dot(delta * beta, w[0:m,:].T)* PHI[:, 0:m]
 
@@ -744,6 +566,10 @@ class GP:
             du = dot(PHI[:, 0:m].T, dbeta)-u*eta
             dlnEta = -0.5*eta*u**2+0.5
             dlnPHI = dlnPHI+dot(dbeta, u.T) * PHI[:, 0:m]
+
+        nlogML = -sum(nlogML)/(n*k)
+
+        self.nlogML = nlogML
 
         dP = zeros((m, d))
         dGAMMA = zeros(GAMMA.shape)
@@ -777,7 +603,36 @@ class GP:
         if(self.attempts>=self.maxAttempts):
             grad = 0*grad
 
-        return -grad/(n*k)
+        grad = -grad/(n*k)
+
+        variance = zeros((n,k))
+        for i in range(k):
+            variance[:,i:i+1] = sum(dot(PHI,SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
+
+        sigma = variance+exp(-lnBeta)
+
+        self.trainRMSE = sqrt(mean(omega[training,:] * delta ** 2))
+        self.trainLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
+
+        if validation is not None:
+            n = sum(validation)
+
+            PHI,lnBeta,_,_= self.getPHI(theta,X[validation,:])
+
+            lnBeta = lnBeta+log(omega[validation,:])
+
+            variance = zeros((n,k))
+            for i in range(k):
+                variance[:,i:i+1] = sum(dot(PHI,SIGMAi[:,:,i]) * PHI, 1).reshape(n, 1)
+
+            sigma = variance+exp(-lnBeta)
+
+            delta = dot(PHI, w) - Y[validation, :]
+
+            self.validRMSE = sqrt(mean(omega[validation] * delta ** 2))
+            self.validLL = mean(-0.5 * delta ** 2/sigma - 0.5 * log(sigma))-0.5*log(2*pi)
+
+        return nlogML,grad
 
     def getPHI(self,theta,X):
 
