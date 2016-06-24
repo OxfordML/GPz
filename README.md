@@ -48,5 +48,5 @@ pip install package_name
 
 There are two starter codes available:
 
-  - **demo_sin**: A simple univariate example using all the default options with minimal configuration
+  - **demo_sinc**: A simple univariate example using all the default options with minimal configuration
   - **demo_photoz**: A more advanced script showing how to configure all available options on a photo-z sample
