@@ -29,14 +29,19 @@ end
 
 X = bsxfun(@minus,X,muX)*T;
 
-lnA = ones(d,1)*var(Y(training,:));
+lnA = ones(d,1)*log(var(Y(training,:)));
+lnB = zeros(1,k);
+
+theta = [lnA(:);lnB(:)];
 
 options.method = 'lbfgs';
-options.display = 'on';
+options.display = 'off';
 options.maxIter = 50;
-lnA = minFunc(@(params) bayesianLinearRegression(params,X(training,:),Y(training,:)),lnA,options);
 
-wL = (X(training,:)'*X(training,:)+diag(exp(lnA)))\(X(training,:)'*Y(training,:));
+theta = minFunc(@(params) bayesianLinearRegression(params,X(training,:),Y(training,:)),theta,options);
+
+[~,~,wL] = bayesianLinearRegression(theta,X(training,:),Y(training,:));
+
 model.wL = wL;
 
 Y = bsxfun(@minus,Y,X*wL);
