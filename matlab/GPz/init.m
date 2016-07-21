@@ -29,8 +29,8 @@ end
 
 X = bsxfun(@minus,X,muX)*T;
 
-lnA = ones(d,1)*log(var(Y(training,:)));
-lnB = zeros(1,k);
+lnA = -log(var(Y(training,:)));
+lnB = -log(var(Y(training,:)));
 
 theta = [lnA(:);lnB(:)];
 
@@ -38,18 +38,19 @@ options.method = 'lbfgs';
 options.display = 'off';
 options.maxIter = 50;
 
-theta = minFunc(@(params) bayesianLinearRegression(params,X(training,:),Y(training,:)),theta,options);
+f = @(params) bayesianLinearRegression(params,X(training,:),Y(training,:),X(training,:)'*X(training,:),X(training,:)'*Y(training,:));
 
-[~,~,wL] = bayesianLinearRegression(theta,X(training,:),Y(training,:));
+theta = minFunc(f,theta,options);
+
+[~,~,wL] = f(theta);
 
 model.wL = wL;
 
 Y = bsxfun(@minus,Y,X*wL);
 
-varY = var(Y(training,:));
+b = -log(var(Y(training,:)));
+lnAlpha = -log(var(Y(training,:)));
 
-b = -log(varY);
-lnAlpha = log(varY);
 
 if(joint)
     lnAlpha = repmat(lnAlpha,m(end)+d+1,1);
@@ -77,7 +78,7 @@ if(strcmp(method,'ANN'))
         PHI = tanh(PHI*W);
     end
     
-    theta = [theta;lnAlpha;b];
+    theta = [theta;lnAlpha(:);b(:)];
     
     f = @(params) ANN(params,model,X,Y,omega,training,[]);
 else
@@ -130,7 +131,14 @@ if(heteroscedastic)
 end
 
 w = zeros(size(lnAlpha));
-SIGMAi = diag(exp(-lnAlpha));
+
+da = size(lnAlpha,1);
+SIGMAi = zeros(da,da,k);
+for i=1:k
+    SIGMAi(:,:,i) = diag(exp(-lnAlpha(:,i)));
+end
+
+[~,~,w,SIGMAi] = f(theta);
 
 last.theta = theta;
 last.w = w;
