@@ -76,13 +76,13 @@ model = train(model,X,Y,'omega',omega,'training',training,'validation',validatio
 % compute metrics 
 rmse = sqrt(metrics(Y(testing),mu,sigma,@(y,mu,sigma) (y-mu).^2));
 mll = metrics(Y(testing),mu,sigma,@(y,mu,sigma) -0.5*(y-mu).^2./sigma - 0.5*log(sigma)-0.5*log(2*pi));
-nmad15 = metrics(Y(testing),mu,sigma,@(y,mu,sigma) 100*(abs(y-mu)./(y+1)<0.15));
-nmad05 = metrics(Y(testing),mu,sigma,@(y,mu,sigma) 100*(abs(y-mu)./(y+1)<0.05));
+fr15 = metrics(Y(testing),mu,sigma,@(y,mu,sigma) 100*(abs(y-mu)./(y+1)<0.15));
+fr05 = metrics(Y(testing),mu,sigma,@(y,mu,sigma) 100*(abs(y-mu)./(y+1)<0.05));
 bias = metrics(Y(testing),mu,sigma,@(y,mu,sigma) y-mu);
 
 % print metrics for the entire data
-fprintf('RMSE\t\tMLL\t\tNMAD15\t\tNMAD05\t\tBIAS\n')
-fprintf('%f\t%f\t%f\t%f\t%f\n',rmse(end),mll(end),nmad15(end),nmad05(end),bias(end))
+fprintf('RMSE\t\tMLL\t\tFR15\t\tFR05\t\tBIAS\n')
+fprintf('%f\t%f\t%f\t%f\t%f\n',rmse(end),mll(end),fr15(end),fr05(end),bias(end))
 
 % plot scatter plots for density and uncertainty
 [x,y,color,counts]=reduce(Y(testing),mu,sigma,200);
@@ -96,8 +96,8 @@ ind = round(x*length(rmse)/100);
 
 figure;plot(x,rmse(ind),'o-');xlabel('Percentage of Data');ylabel('RMSE');
 figure;plot(x,mll(ind),'o-');xlabel('Percentage of Data');ylabel('MLL');
-figure;plot(x,nmad05(ind),'o-');xlabel('Percentage of Data');ylabel('NMAD05');
-figure;plot(x,nmad15(ind),'o-');xlabel('Percentage of Data');ylabel('NMAD15');
+figure;plot(x,fr05(ind),'o-');xlabel('Percentage of Data');ylabel('FR05');
+figure;plot(x,fr15(ind),'o-');xlabel('Percentage of Data');ylabel('FR15');
 figure;plot(x,bias(ind),'o-');xlabel('Percentage of Data');ylabel('BIAS');
 
 % plot mean and standard deviation of different scores as functions of spectroscopic redshift using 20 bins
