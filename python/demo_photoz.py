@@ -78,13 +78,13 @@ mu,sigma,modelV,noiseV,_ = model.predict(X[testing,:].copy())
 # compute metrics
 rmse = sqrt(GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: (y-mu)**2))
 mll = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: -0.5*(y-mu)**2/sigma-0.5*log(sigma)-0.5*log(2*pi))
-nmad15 = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: 100.0*(abs(y-mu)/(y+1.0)<0.15))
-nmad05 = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: 100.0*(abs(y-mu)/(y+1.0)<0.05))
+fr15 = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: 100.0*(abs(y-mu)/(y+1.0)<0.15))
+fr05 = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: 100.0*(abs(y-mu)/(y+1.0)<0.05))
 bias = GPz.metrics(Y[testing],mu,sigma,lambda y,mu,sigma: y-mu)
 
 # print metrics for the entire data
-print '{0:4s}\t\t\t{1:3s}\t\t\t{2:6s}\t\t\t{3:6s}\t\t\t{4:4s}'.format('RMSE', ' MLL', ' NMAD15', ' NMAD05', ' BIAS')
-print '{0:1.7e}\t{1: 1.7e}\t{2: 1.7e}\t{3: 1.7e}\t{4: 1.7e}'.format(rmse[-1], mll[-1], nmad15[-1],nmad05[-1],bias[-1])
+print '{0:4s}\t\t\t{1:3s}\t\t\t{2:6s}\t\t\t{3:6s}\t\t\t{4:4s}'.format('RMSE', ' MLL', ' FR15', ' FR05', ' BIAS')
+print '{0:1.7e}\t{1: 1.7e}\t{2: 1.7e}\t{3: 1.7e}\t{4: 1.7e}'.format(rmse[-1], mll[-1], fr15[-1],fr05[-1],bias[-1])
 
 # plot scatter plots for density and uncertainty
 f = plt.figure(1)
@@ -116,15 +116,15 @@ plt.ylabel('MLL')
 f.show()
 
 f = plt.figure(5)
-plt.plot(x,nmad15[ind-1],'o-')
+plt.plot(x,fr15[ind-1],'o-')
 plt.xlabel('Percentage of Data')
-plt.ylabel('NMAD15')
+plt.ylabel('FR15')
 f.show()
 
 f = plt.figure(6)
-plt.plot(x,nmad05[ind-1],'o-')
+plt.plot(x,fr05[ind-1],'o-')
 plt.xlabel('Percentage of Data')
-plt.ylabel('NMAD05')
+plt.ylabel('FR05')
 f.show()
 
 f = plt.figure(7)
