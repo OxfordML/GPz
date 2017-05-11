@@ -12,8 +12,16 @@ n = 10000;   % number of samples
 X  = linspace(-10,10,n)'; % input
 X = X(X<-7|X>-2); n = size(X,1); % create a gap
 
-Yn = fx(X)+randn(size(X)).*sx(X);  % create a noisy output
+E = 0.5;  % desired mean of the input noise variance
+V = 0.25; % desired variance of the input noise variance
 
+% The parameters of a gamma distribution with the desired mean and variance
+a = E^2/V; b = V/E;
+
+Psi = gamrnd(a,b,size(X)); % sample from the gamma distribution with mean=E and variance=V
+
+Xn = X+randn(size(X)).*sqrt(Psi);  % create a noisy input
+Yn = fx(X)+randn(size(X)).*sx(X);  % create a noisy output
 %%%%%%% model options and fitting %%%%%%%
 
 m=100; % number of basis functions, the more the better but also the slower
@@ -26,10 +34,21 @@ joint = true; % joint prior mean function optimisation
 
 [training,validation,testing] = sample(n,0.6,0.2,0.2); % split data into training, validation and testing
 
-model = init(X,Yn,method,m,'normalise',normalise,'heteroscedastic',heteroscedastic,'joint',joint,'training',training);
-model = train(model,X,Yn,'maxIter',maxIter,'maxAttempt',maxAttempt,'training',training,'validation',validation);
+%%%%%%% IMPORTANT NOTE %%%%%%%
+% Psi is the input variance and its size depends on the dimensionality of
+% the input and the chosen method. For GL, VL, GD and VD Psi is assumed to
+% be (n x d), where n is the number of samples and d is the dimensionality of
+% the input wheras for GC and VC, Psi is assumed to be (d x d x n). If the size
+% of Psi does not match the covariance type, then the code will convert it so that
+% they match. 
 
-% [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model); % generate predictions for the test set
+% Psi = []; % if you want to treat the points as exact, or simply remove
+% the options 'Psi' from the input in the following three lines
+
+model = init(Xn,Yn,method,m,'normalise',normalise,'heteroscedastic',heteroscedastic,'joint',joint,'training',training,'Psi',Psi);
+model = train(model,Xn,Yn,'maxIter',maxIter,'maxAttempt',maxAttempt,'training',training,'validation',validation,'Psi',Psi);
+
+% [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model,'Psi',Psi(testing,:)); % generate predictions for the test set
 
 % mu     = the best point estimate
 % nu     = variance due to data density
@@ -50,7 +69,7 @@ hold on;
 
 f = [mu+2*sqrt(sigma); flip(mu-2*sqrt(sigma))];
 h1 = fill([Xs; flip(Xs)], f, [0.85 0.85 0.85]);
-plot(X,Yn,'b.');
+plot(Xn,Yn,'b.');
 
 muY = model.muY;
 

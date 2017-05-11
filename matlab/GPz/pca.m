@@ -1,5 +1,4 @@
-function [mu,T,Ti,U,S] = pca(X,th)
-
+function [mu,sigmas,T,Ti,U,S] = pca(X,th)
 
 [n,m] = size(X);
 
@@ -45,4 +44,5 @@ U = U(:,1:k);
 T = U*S_inv;
 Ti = S*U';
 
+sigmas=sigmas/n;
 end

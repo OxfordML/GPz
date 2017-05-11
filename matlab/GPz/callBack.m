@@ -1,4 +1,4 @@
-function stop = callBack(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond,maxIter,maxAttempts,trainingOnly,varargin)
+function stop = callBack(theta,iterationType,i,funEvals,f,t,gtd,g,dir,optCond,maxIter,maxAttempts,trainingOnly,varargin)
 
     global trainRMSE
     global trainLL
@@ -33,6 +33,7 @@ function stop = callBack(theta,iterationType,i,funEvals,f,t,gtd,g,d,optCond,maxI
                 fprintf('\t%d\t%1.5e\t%1.5e\t%1.5e\t%1.5e\t %1.5e\t%f\n',i,-f,trainRMSE,trainLL,validRMSE,validLL,toc);
             end
         end
+        
     else
         if(attempts==maxAttempts)
             fprintf('No improvment after maximum number of attempts\n');

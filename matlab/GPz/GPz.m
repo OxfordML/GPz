@@ -1,4 +1,4 @@
-function [nlogML,grad,w,SIGMAi,PHI,lnBeta] = GPz(theta,model,X,Y,omega,training,validation)
+function [nlogML,grad,w,iSigma_w,PHI] = GPz(theta,model,X,Y,Psi,omega,training,validation)
 
 global trainRMSE
 global trainLL
@@ -9,10 +9,10 @@ global validLL
 k = model.k;
 m = model.m;
 method = model.method;
-joint = model.joint;
 heteroscedastic = model.heteroscedastic;
+joint = model.joint;
 
-n = size(X,1);
+[n,d] = size(X);
 
 if(isempty(training))
     training = true(n,1);
@@ -24,8 +24,6 @@ end
 
 n = sum(training);
 
-d = size(X,2);
-
 if(joint)
     a_dim = m+d+1;
 else
@@ -34,146 +32,320 @@ end
 
 P = reshape(theta(1:m*d),m,d);
 
-[PHI,lnBeta,GAMMA,lnPHI] = getPHI(X(training,:),theta,model);
+[PHI,Lambda,lnBeta_i] = getPHI(X,Psi,theta,model,training);
 
-lnBeta = bsxfun(@plus,lnBeta,log(omega(training,:)));
+l_dim = length(Lambda(:));
 
-g_dim = length(GAMMA(:));
-
-lnAlpha = reshape(theta(m*d+g_dim+1:m*d+g_dim+a_dim*k),a_dim,k);
+lnAlpha = reshape(theta(m*d+l_dim+1:m*d+l_dim+a_dim*k),a_dim,k);
 
 if(isempty(Y))
     nlogML = 0;
     grad = 0;
     w = 0;
-    SIGMAi = 0;
+    iSigma_w = 0;
     return
 end
 
-beta = exp(lnBeta);
+
+beta = exp(-lnBeta_i);
+beta_i = beta.^-1;
+df = -beta;
+
+
+omega_x_beta = bsxfun(@times,beta,omega(training,:));
+
 alpha = exp(lnAlpha);
+da = alpha;
 
 nu = zeros(n,k);
 w = zeros(a_dim,k);
-dwda = zeros(a_dim,k);
-SIGMAi = zeros(a_dim,a_dim,k);
+iSigma_w = zeros(a_dim,a_dim,k);
 logdet = zeros(1,k);
+dwda = zeros(a_dim,k);
 dlnPHI = zeros(n,m);
 dlnAlpha = zeros(a_dim,k);
 
 for i=1:k
     
-    BxPHI = bsxfun(@times,PHI,beta(:,i));
+    BxPHI = bsxfun(@times,PHI,omega_x_beta(:,i));
 
     SIGMA = BxPHI'*PHI+diag(alpha(:,i));
-
-    [U,S] = svd(SIGMA);
     
-    SIGMAi(:,:,i) = (U/S)*U';
-    logdet(i) = sum(log(abs(diag(S))));
+    [iSigma_w(:,:,i),logdet(i)] = inv_logdet(SIGMA);
     
-    nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
-
-    w(:,i) = SIGMAi(:,:,i)*BxPHI'*Y(training,i);
-
-    dwda(:,i) = -SIGMAi(:,:,i)*(alpha(:,i).*w(:,i));
-    
-    dlnPHI = dlnPHI-(BxPHI*SIGMAi(:,1:m,i)).*PHI(:,1:m);
-    dlnAlpha(:,i) = -0.5*diag(SIGMAi(:,:,i)).*alpha(:,i);
+    nu(:,i) = sum(PHI.*(PHI*iSigma_w(:,:,i)),2);
+    w(:,i) = iSigma_w(:,:,i)*BxPHI'*Y(training,i);
+    dwda(:,i) = -iSigma_w(:,:,i)*(da(:,i).*w(:,i));
+    dlnPHI = dlnPHI-(BxPHI*iSigma_w(:,1:m,i));
+    dlnAlpha(:,i) = -0.5*diag(iSigma_w(:,:,i)).*da(:,i);
 
 end
 
 delta = PHI*w-Y(training,:);
 
-beta_x_delta = beta.*delta;
+omega_beta_x_delta = omega_x_beta.*delta;
 
-nlogML = -0.5*sum(beta_x_delta.*delta)+0.5*sum(lnBeta)-0.5*sum(alpha.*w.^2)+0.5*sum(lnAlpha)-0.5*logdet-0.5*n*log(2*pi);
+nlogML = -0.5*sum(omega_beta_x_delta.*delta)-0.5*sum(alpha.*w.^2)+0.5*sum(lnAlpha)-0.5*logdet;
+nlogML = nlogML+0.5*sum(bsxfun(@times,-lnBeta_i,omega(training,:)));
 
 if(nargout>2)
     grad = 0;
     return
 end
 
-dlnAlpha = dlnAlpha-(PHI'*beta_x_delta).*dwda-alpha.*w.*dwda-0.5*alpha.*w.^2+0.5;
-dlnPHI= dlnPHI-(beta_x_delta*w(1:m,:)').*PHI(:,1:m);
+dlnAlpha = dlnAlpha-(PHI'*omega_beta_x_delta).*dwda-alpha.*w.*dwda-0.5*da.*w.^2+0.5;
+dlnPHI = dlnPHI-(omega_beta_x_delta*w(1:m,:)');
 
-dbeta = -0.5*(beta_x_delta.*delta+beta.*nu)+0.5;
+
+dbeta = bsxfun(@times,0.5*df.*(beta_i-(delta.^2+nu)),omega(training,:));
 db = sum(dbeta);
 
 if(heteroscedastic)
-    u = reshape(theta(m*d+g_dim+a_dim*k+k+1:m*d+g_dim+a_dim*k+k+m*k),m,k);
-    lnEta = reshape(theta(m*d+g_dim+a_dim*k+k+m*k+1:m*d+g_dim+a_dim*k+k+m*k+m*k),m,k);
-    eta = exp(lnEta);
-    nlogML = nlogML-0.5*sum(u.^2.*eta)+0.5*sum(lnEta)-0.5*m*log(2*pi);
-    du = PHI(:,1:m)'*dbeta-u.*eta;
-    dlnEta = -0.5*eta.*u.^2+0.5;
-    dlnPHI = dlnPHI+(dbeta*u').*PHI(:,1:m);    
+    
+    v = reshape(theta(m*d+l_dim+a_dim*k+k+1:m*d+l_dim+a_dim*k+k+m*k),m,k);
+    
+    lnTau = reshape(theta(m*d+l_dim+a_dim*k+k+m*k+1:m*d+l_dim+a_dim*k+k+m*k+m*k),m,k);
+    tau = exp(lnTau);
+    
+    nlogML = nlogML-0.5*sum((v.^2).*tau)+0.5*sum(lnTau)-0.5*m*k*log(2*pi);
+    dv = (PHI(:,1:m)'*dbeta)-v.*tau;
+    dlnTau = -0.5*tau.*v.^2+0.5;
+    dlnPHI = dlnPHI+(dbeta*v');    
+    
+
 end
 
+nlogML = sum(nlogML)-0.5*log(2*pi)*sum(sum(omega(training,:)));
+
+
+dPHI = dlnPHI.*PHI(:,1:m);
+
 dP = zeros(size(P));
-dGAMMA = zeros(size(GAMMA));
+dLambda = zeros(size(Lambda));
+
+list = find(training);
 
 for j=1:m
     
     Delta = bsxfun(@minus,X(training,:),P(j,:));
-    dlnPHIjTxDelta = dlnPHI(:,j)'*Delta;
     
     switch(method)
         case 'GL'
-            dP(j,:) = dlnPHIjTxDelta*GAMMA^2;
-            dGAMMA = dGAMMA+2*sum(dlnPHI(:,j).*lnPHI(:,j))*GAMMA^-1;
+            
+            if(j==1)
+                Sigma = Lambda.^-2;
+                iSigma = Lambda.^2;
+            end
+            
+            if(isempty(Psi))
+                
+                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
+                dLambda = dLambda-Lambda*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))));
+%                 dLambda = dLambda+Lambda*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))))*iSigma^2; % Variance
+                                        
+            else
+
+               
+                Psi_plus_Sigma = Psi(training,:)+Sigma;
+                Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
+
+                dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
+
+                dLambda = dLambda-Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
+%                 dLambda = dLambda+Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
+  
+                
+            end
         case 'VL'
-            dP(j,:) = dlnPHIjTxDelta*GAMMA(j)^2;
-            dGAMMA(j) = 2*sum(dlnPHI(:,j).*lnPHI(:,j))*GAMMA(j)^-1;
+            
+            Sigma = Lambda(j).^-2;
+            iSigma = Lambda(j).^2;
+            
+            if(isempty(Psi))
+                
+                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
+                dLambda(j) = dLambda(j)-Lambda(j)*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))));
+%                 dLambda(j) = dLambda(j)+Lambda(j)*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))))*iSigma^2; % Variance
+                                        
+            else
+
+                Psi_plus_Sigma = Psi(training,:)+Sigma;
+                Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
+
+                dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
+
+                dLambda(j) = dLambda(j)-Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
+%                 dLambda(j) = dLambda(j)+Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
+  
+                
+            end
         case 'GD'
-            dP(j,:) = dlnPHIjTxDelta.*GAMMA.^2;
-            dGAMMA = dGAMMA-sum((dlnPHI(:,j)*GAMMA).*Delta.^2);
+            
+            if(j==1)
+                Sigma = Lambda.^-2;
+                iSigma = Lambda.^2;
+            end
+            
+            if(isempty(Psi))
+                
+                    dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta).*iSigma;
+                    
+                    dLambda = dLambda-Lambda.*sum(bsxfun(@times,Delta.^2,dPHI(:,j)));
+%                     dLambda = dLambda+Lambda.*sum(bsxfun(@times,Delta.^2,dPHI(:,j))).*iSigma.^2; % Variance
+                                        
+            else
+
+                
+                Psi_plus_Sigma = bsxfun(@plus,Psi(training,:),Sigma);
+
+                dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
+                
+                Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
+                dLambda = dLambda-Lambda.*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
+
+%                 dLambda = dLambda+Lambda.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
+  
+                
+            end
         case 'VD'
-            dP(j,:) = dlnPHIjTxDelta.*GAMMA(j,:).^2;
-            dGAMMA(j,:) = -sum((dlnPHI(:,j)*GAMMA(j,:)).*Delta.^2);
+
+            Sigma = Lambda(j,:).^-2;
+            iSigma = Lambda(j,:).^2;
+            
+            if(isempty(Psi))
+                
+                    
+                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta).*iSigma;
+
+                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*sum(bsxfun(@times,Delta.^2,dPHI(:,j)));
+
+%                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*sum(bsxfun(@times,Delta.^2,dPHI(:,j))).*iSigma.^2; % Variance
+                                        
+            else
+
+
+                Psi_plus_Sigma = bsxfun(@plus,Psi(training,:),Sigma);
+
+                dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
+
+                Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
+                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
+                
+%                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
+  
+
+            end 
         case 'GC'
-            dP(j,:) = dlnPHIjTxDelta*(GAMMA'*GAMMA);
-            dGAMMA = dGAMMA-GAMMA*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
+
+            if(j==1)
+                iSigma = Lambda'*Lambda;
+                Sigma = inv(iSigma);
+            end
+            
+            if(isempty(Psi))
+                
+                
+                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
+
+                diSigma = -0.5*bsxfun(@times,Delta,dPHI(:,j))'*Delta;
+                
+%                 dSigma = -iSigma*diSigma*iSigma;
+%                 dLambda = dLambda+2*Lambda*dSigma; % Variance
+                
+                dLambda = dLambda+2*Lambda*diSigma;
+                
+                
+            else
+
+
+                for i=1:n
+
+                    invCS = inv(Sigma+Psi(:,:,list(i)));
+                    
+                    dP(j,:) = dP(j,:)+dPHI(i,j)*Delta(i,:)*invCS;
+            
+                    dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
+                    
+                    diSigma = -Sigma*dSigma*Sigma;
+                    dLambda = dLambda+2*dPHI(i,j)*Lambda*diSigma;                
+
+%                     dLambda = dLambda+2*dPHI(i,j)*Lambda*dSigma; % Variance
+                    
+                end
+            end
         case 'VC'
-            dP(j,:) = dlnPHIjTxDelta*(GAMMA(:,:,j)'*GAMMA(:,:,j));
-            dGAMMA(:,:,j) = -GAMMA(:,:,j)*bsxfun(@times,Delta,dlnPHI(:,j))'*Delta;
+
+            iSigma = Lambda(:,:,j)'*Lambda(:,:,j);
+            Sigma = inv(iSigma);
+            
+            if(isempty(Psi))
+                
+                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
+
+                diSigma = -0.5*bsxfun(@times,Delta,dPHI(:,j))'*Delta;
+                
+                
+                dLambda(:,:,j) = 2*Lambda(:,:,j)*diSigma;
+                
+
+%                 dSigma = -iSigma*diSigma*iSigma;
+%                 dLambda(:,:,j) = 2*Lambda(:,:,j)*dSigma; % Variance
+                
+            else
+                
+                for i=1:n
+
+                    invCS = inv(Sigma+Psi(:,:,list(i)));
+                    
+                    dP(j,:) = dP(j,:)+dPHI(i,j)*Delta(i,:)*invCS;
+            
+                    dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
+                    
+                    diSigma = -Sigma*dSigma*Sigma;
+                    dLambda(:,:,j) = dLambda(:,:,j)+2*dPHI(i,j)*Lambda(:,:,j)*diSigma;                
+
+%                     dLambda(:,:,j) = dLambda(:,:,j)+2*dPHI(i,j)*Lambda(:,:,j)*dSigma; % Variance
+                    
+                end
+            end
     end
+    
 end
 
-grad = [dP(:);dGAMMA(:);dlnAlpha(:);db(:)];
+grad = [dP(:);dLambda(:);dlnAlpha(:);db(:)];
 
 if(heteroscedastic)
-    grad = [grad;du(:);dlnEta(:)];
+    grad = [grad;dv(:);dlnTau(:)];
 end
 
-nlogML = -sum(nlogML)/(n*k);
+
+nlogML = -nlogML/(n*k);
 grad = -grad/(n*k);
 
-sigma = nu+exp(-lnBeta);
-
-trainRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(training)))/(n*k));
-trainLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
+trainRMSE = sqrt(sum(sum(bsxfun(@times,delta.^2,omega(training))))/(n*k));
+trainLL = sum(sum(bsxfun(@times,-0.5*beta.*delta.^2+0.5*log(beta),omega(training,:))))/(n*k)-0.5*log(2*pi);
 
 if(~isempty(validation))
     
     n = sum(validation);
+    
+    [PHI,~,lnBeta_i] = getPHI(X,Psi,theta,model,validation);
+    
+    beta = exp(-lnBeta_i);
 
-    [PHI,lnBeta] = getPHI(X(validation,:),theta,model);
-    
-    lnBeta = bsxfun(@plus,lnBeta,log(omega(validation,:)));
-    
+
     nu = zeros(n,k);
     
     for i=1:k
-        nu(:,i) = sum(PHI.*(PHI*SIGMAi(:,:,i)),2);
+        nu(:,i) = sum(PHI.*(PHI*iSigma_w(:,:,i)),2);
     end
     
-    sigma = nu+exp(-lnBeta);
-
-    delta = PHI*w-Y(validation,:);
+    pred = PHI*w;
+    delta = pred-Y(validation,:);
     
-    validRMSE = sqrt(sum(bsxfun(@times,delta.^2,omega(validation)))/(n*k));
-    validLL = sum(sum(-0.5*delta.^2./sigma-0.5*log(sigma)))/(n*k)-0.5*log(2*pi);
+    
+    validRMSE = sqrt(sum(sum(bsxfun(@times,delta.^2,omega(validation))))/(n*k));
+    validLL = sum(sum(bsxfun(@times,-0.5*beta.*delta.^2+0.5*log(beta),omega(validation,:))))/(n*k)-0.5*log(2*pi);
     
 end
 

@@ -8,8 +8,11 @@ addpath(genpath('minFunc_2012/'))       % path to minfunc
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
 
 method = 'VD';                          % select method, options = GL, VL, GD, VD, GC and VC [required]
-m = 100;                                % number of basis functions to use [required]
+
+m = 100;                                 % number of basis functions to use [required]
+
 joint = true;                           % jointly learn a prior linear mean function [default=true]
+
 heteroscedastic = true;                 % learn a heteroscedastic noise process, set to false interested only in point estimates
 
 csl_method = 'normal';                  % cost-sensitive learning option: [default='normal']
@@ -18,10 +21,11 @@ csl_method = 'normal';                  % cost-sensitive learning option: [defau
                                         %       'normal':       no weights assigned, all samples are equally important
                             
 binWidth = 0.1;                         % the width of the bin for 'balanced' cost-sensitive learning [default=range(output)/100]
-normalise = true;                       % preprocess the data using PCA [default=true]
+
+normalise = true;                     % preprocess the data using PCA [default=true]
 
 %%%%%%%%%%%%%% Training options %%%%%%%%%%%%%%%%  
-dataPath = 'data/sdss_sample.csv';      % path to the data set, has to be in the following format m_1,m_2,..,m_k,e_1,e_2,...,e_k,z_spec
+dataPath = 'data/sdss_sample.csv';   % path to the data set, has to be in the following format m_1,m_2,..,m_k,e_1,e_2,...,e_k,z_spec
                                         % where m_i is the i-th magnitude, e_i is its associated uncertainty and z_spec is the spectroscopic redshift
                                         % [required]
                                 
@@ -44,7 +48,8 @@ X(:,end) = [];
 filters = d/2;
 
 % log the uncertainties of the magnitudes, any additional preprocessing should be placed here
-X(:,filters+1:end) = log(X(:,filters+1:end));
+Psi = X(:,filters+1:end).^2;
+X(:,filters+1:end) = [];
 
 % sample training, validation and testing sets from the data
 [training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
@@ -56,17 +61,17 @@ X(:,filters+1:end) = log(X(:,filters+1:end));
 omega = getOmega(Y,csl_method,binWidth); 
 
 % initialize the initial model
-model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'joint',joint,'normalise',normalise);
+model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'joint',joint,'normalise',normalise,'Psi',Psi);
 
 % train the model
-model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts);
+model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts,'Psi',Psi);
 
 %%%%%%%% NOTE %%%%%%%
 % you can train the model again, even using different data, by executing:
 % model = train(model,X,Y,options);
 
 % use the model to generate predictions for the test set
-[mu,sigma,nu,beta_i] = predict(X(testing,:),model);
+[mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model,'Psi',Psi(testing,:));
 
 
 %%%%%%%%%%%%%% Display Results %%%%%%%%%%%%%%%% 
@@ -109,4 +114,4 @@ figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel(
 figure;errorbar(centers,means,stds,'s');xlabel('Spectroscopic Redshift');ylabel('Noise Uncertainty');
 
 % save output as comma seperated values (mean,sigma,model_variance,noise_variance)
-csvwrite([method,'_',num2str(m),'_',csl_method,'.csv'],[Y(testing) mu sigma nu beta_i]);
+csvwrite([method,'_',num2str(m),'_',csl_method,'.csv'],[Y(testing) mu sigma nu beta_i gamma]);
