@@ -3,11 +3,11 @@ function model = init(X,Y,method,m,varargin)
 [n,d] = size(X);
 k = size(Y,2);
 
-pnames =    { 'heteroscedastic' 'normalise'   'omega'    'training'   'Psi' 'joint'};
+pnames =    { 'heteroscedastic' 'normalize'   'omega'    'training'   'Psi' 'joint'};
 defaults =  { true                true          ones(n,1)   true(n,1)   [] true};
 
 
-[heteroscedastic,normalise,omega,training,Psi,joint]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
+[heteroscedastic,normalize,omega,training,Psi,joint]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
 
 model.k = k;
 model.m = m;
@@ -15,7 +15,7 @@ model.method = method;
 model.heteroscedastic = heteroscedastic;
 model.joint = joint;
 
-if(normalise)
+if(normalize)
     muX = mean(X(training,:));
     sdX = std(X(training,:));
 else

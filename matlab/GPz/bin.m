@@ -1,5 +1,9 @@
 function [centers,means,stds] = bin(x,y,bins)
     
+    if(nargin==2)
+        bins = 100;
+    end
+    
     centers = linspace(min(x),max(x),bins)';
     n = length(x);
     m = length(centers);
