@@ -92,6 +92,7 @@ if(heteroscedastic)
 end
 
 if(learnPsi)
+    
     if(method(2)=='C')
         S = eye(d)/mean(lambda);
     else
@@ -99,6 +100,7 @@ if(learnPsi)
     end            
     
     theta = [theta;S(:)];
+    
 end
 
 [~,~,w,iSigma_w] = f(theta);

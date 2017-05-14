@@ -162,6 +162,10 @@ for j=1:m
                 Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
 
                 dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
+                
+                if(learnPsi)
+                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
+                end
 
                 dLambda = dLambda-Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
 %                 dLambda = dLambda+Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
@@ -185,6 +189,10 @@ for j=1:m
                 Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
 
                 dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
+                
+                if(learnPsi)
+                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
+                end
 
                 dLambda(j) = dLambda(j)-Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
 %                 dLambda(j) = dLambda(j)+Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
@@ -213,6 +221,11 @@ for j=1:m
                 dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
                 
                 Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
+                
+                if(learnPsi)
+                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
+                end
+                
                 dLambda = dLambda-Lambda.*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
 
 %                 dLambda = dLambda+Lambda.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
@@ -241,12 +254,13 @@ for j=1:m
                 dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
 
                 Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
-                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
                 
                 if(learnPsi)
                     dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
                 end
-               
+                
+                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
+                
 %                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
   
 
@@ -282,9 +296,13 @@ for j=1:m
             
                     dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
                     
+                    if(learnPsi)
+                        dS = dS+2*dPHI(i,j)*S*(dSigma-0.5*iSigma);
+                    end
+                    
                     diSigma = -Sigma*dSigma*Sigma;
                     dLambda = dLambda+2*dPHI(i,j)*Lambda*diSigma;                
-
+                    
 %                     dLambda = dLambda+2*dPHI(i,j)*Lambda*dSigma; % Variance
                     
                 end
@@ -316,6 +334,10 @@ for j=1:m
                     dP(j,:) = dP(j,:)+dPHI(i,j)*Delta(i,:)*invCS;
             
                     dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
+                    
+                    if(learnPsi)
+                        dS = dS+2*dPHI(i,j)*S*(dSigma-0.5*iSigma);
+                    end
                     
                     diSigma = -Sigma*dSigma*Sigma;
                     dLambda(:,:,j) = dLambda(:,:,j)+2*dPHI(i,j)*Lambda(:,:,j)*diSigma;                

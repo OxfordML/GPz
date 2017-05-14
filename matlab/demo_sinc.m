@@ -6,7 +6,7 @@ addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 m = 100;                                % number of basis functions to use [required]
  
-method = 'VD';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
+method = 'VL';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
  
 joint = true;                           % jointly learn a prior linear mean-function [default=true]
  
