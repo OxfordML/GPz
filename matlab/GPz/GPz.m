@@ -14,6 +14,18 @@ joint = model.joint;
 
 [n,d] = size(X);
 
+learnPsi = ischar(Psi);
+if(learnPsi)
+    if(method(2)=='C')
+        S = reshape(theta(end-d*d+1:end),d,d);
+        Psi = reshape(repmat(S'*S,1,n),d,d,n);
+    else
+        S = reshape(theta(end-d+1:end),1,d);
+        Psi = ones(n,1)*S.^2;
+    end
+    dS = zeros(size(S));
+end
+
 if(isempty(training))
     training = true(n,1);
 end
@@ -231,6 +243,10 @@ for j=1:m
                 Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
                 dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
                 
+                if(learnPsi)
+                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
+                end
+               
 %                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
   
 
@@ -318,6 +334,9 @@ if(heteroscedastic)
     grad = [grad;dv(:);dlnTau(:)];
 end
 
+if(learnPsi)
+    grad = [grad;dS(:)];
+end
 
 nlogML = -nlogML/(n*k);
 grad = -grad/(n*k);

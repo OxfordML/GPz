@@ -22,7 +22,7 @@ trainSplit = 0.2;                       % percentage of data to use for training
 validSplit = 0.2;                       % percentage of data to use for validation
 testSplit  = 0.6;                       % percentage of data to use for testing
 
-inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = false;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
 
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
 
@@ -54,7 +54,7 @@ end
 % split data into training, validation and testing
 [training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
 
-if(inputNoise)
+if(inputNoise) 
     % initialize the model
     model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'joint',joint,'training',training,'Psi',Psi);
 
@@ -83,7 +83,7 @@ end
 %%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 Xs = linspace(-15,15,1000)';
 
-[mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model); % generate predictions, note that this will use the model with the best score on the validation set
+[mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'Psi',[]); % generate predictions, note that this will use the model with the best score on the validation set
 % [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'whichSet','last'); % this will use the model with the best score on the training set
 
 hold on;

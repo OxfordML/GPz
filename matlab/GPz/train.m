@@ -16,6 +16,8 @@ muY = model.muY;
 muX = model.muX;
 sdX = model.sdX;
 
+learnPsi = model.learnPsi;
+
 n = size(X,1);
 
 pnames =    { 'maxIter' 'maxAttempts' 'omega'     'training'     'validation'   'Psi'};
@@ -29,7 +31,7 @@ X = bsxfun(@minus,X,muX);
 X = bsxfun(@rdivide,X,sdX);
 
 
-if(~isempty(Psi))
+if(~learnPsi&&~isempty(Psi))
     Psi = fixSx(Psi,n,sdX,method);
 end
 

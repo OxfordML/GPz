@@ -35,7 +35,9 @@ Y = bsxfun(@minus,Y,muY);
 X = bsxfun(@minus,X,muX);
 X = bsxfun(@rdivide,X,sdX);
 
-if(~isempty(Psi))
+learnPsi = ischar(Psi);
+
+if(~learnPsi&&~isempty(Psi))
     Psi = fixSx(Psi,n,sdX,method);
 end
 
@@ -89,6 +91,16 @@ if(heteroscedastic)
     
 end
 
+if(learnPsi)
+    if(method(2)=='C')
+        S = eye(d)/mean(lambda);
+    else
+        S = ones(1,d)/mean(lambda);
+    end            
+    
+    theta = [theta;S(:)];
+end
+
 [~,~,w,iSigma_w] = f(theta);
 
 last.theta = theta;
@@ -102,6 +114,8 @@ best.LL = -inf;
 
 model.last = last;
 model.best = best;
+
+model.learnPsi = learnPsi;
 
 
 end

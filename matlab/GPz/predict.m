@@ -1,12 +1,14 @@
 function [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(X,model,varargin)
     
-    n = size(X,1);
+    [n,d] = size(X);
     
     muY = model.muY;
     muX = model.muX;
     sdX = model.sdX;
 
     method = model.method;
+    
+    learnPsi = model.learnPsi;
     
     pnames =    { 'whichSet' 'Psi' 'exact'};
     defaults =  { 'best'	[] true};
@@ -22,11 +24,22 @@ function [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(X,model,varargin)
     X = bsxfun(@minus,X,muX);
     X = bsxfun(@rdivide,X,sdX);
     
-    Psi = fixSx(Psi,n,sdX,method);
-    
     theta = set.theta;
     w = set.w;
     iSigma_w = set.iSigma_w;
+    
+    if(learnPsi)
+        if(method(2)=='C')
+            S = reshape(theta(end-d*d+1:end),d,d);
+            Psi = reshape(repmat(S'*S,1,n),d,d,n);
+        else
+            S = reshape(theta(end-d+1:end),1,d);
+            Psi = ones(n,1)*S.^2;
+        end            
+    else
+        Psi = fixSx(Psi,n,sdX,method);
+    end
+    
     
     [PHI,~,lnBeta_i] = getPHI(X,Psi,theta,model,[]);
     
