@@ -84,7 +84,7 @@ end
 Xs = linspace(-15,15,1000)';
 
 [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'Psi',[]); % generate predictions, note that this will use the model with the best score on the validation set
-% [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'whichSet','last'); % this will use the model with the best score on the training set
+% [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'Psi',[],'whichSet','last'); % this will use the model with the best score on the training set
 
 hold on;
 
