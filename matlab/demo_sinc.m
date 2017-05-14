@@ -22,7 +22,7 @@ trainSplit = 0.2;                       % percentage of data to use for training
 validSplit = 0.2;                       % percentage of data to use for validation
 testSplit  = 0.6;                       % percentage of data to use for testing
 
-inputNoise = false;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
 
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
 
