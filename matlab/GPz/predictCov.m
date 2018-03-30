@@ -1,154 +1,336 @@
-function [nu,Vg,gamma] = predictCov(X,Psi,model,set,PHI,mu,lnBeta_i)
+function [mu,nu,beta_i,gamma,PHI] = predictCov(X,Psi,model,set,ind)
     
+    o = ~isnan(X(find(ind,1),:));
+    do = sum(o);
+    
+    d = size(X(ind,:),2);
     m = model.m;
     k = model.k;
-    d = model.d;
-
-    method = model.method;
-    joint = model.joint;
     
+    method = model.method;
+
     theta = set.theta;
     w = set.w;
     iSigma_w = set.iSigma_w;
-    
-    switch(method)
-                        
-        case 'GL'
-            Lambda = theta(m*d+1);
-        case 'VL'
-            Lambda = theta(m*d+1:m*d+m)';
-        case 'GD'
-            Lambda = theta(m*d+1:m*d+d)';
-        case 'VD'
-            Lambda = reshape(theta(m*d+1:m*d+m*d),m,d);
-        case 'GC'
-            Lambda = reshape(theta(m*d+1:m*d+d*d),d,d);
-        case 'VC'
-            Lambda = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
-    end
-
-    if(model.joint)
-        a_dim = m+d+1;
-    else
-        a_dim = m;
-    end
-    
-    l_dim = length(Lambda(:));
+    priors = set.priors;
+    P = set.P;
     
     if(model.heteroscedastic)
-        v = reshape(theta(m*d+l_dim+a_dim*k+k+1:m*d+l_dim+a_dim*k+k+m*k),m,k);
+        v = set.v;
     else
         v = zeros(m,k);
     end
-    
-    b = theta(m*d+l_dim+a_dim*k+1:m*d+l_dim+a_dim*k+k)';
-    
-    [n,k] = size(mu);
 
-    gamma = zeros(n,k);
+    switch(method)
+        case 'GC'
+            Gamma  = reshape(repmat(reshape(theta(m*d+1:m*d+d*d),d,d),1,m),d,d,m);
+        case 'VC'
+            Gamma = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
+    end
+
+    g_dim = model.g_dim;
+    b = theta(m*d+g_dim+m*k+1:m*d+g_dim+m*k+k)';
+    
+    if(do==d)
+        
+        if(isempty(Psi))
+            
+            [mu,nu,beta_i,gamma,PHI] = predictFull(X(ind,:),theta,w,iSigma_w,model);
+            
+        else
+            [mu,nu,beta_i,gamma,PHI] = predictNoisy(X(ind,:),Psi(:,:,ind),Gamma,w,v,b,P,iSigma_w,theta,model);
+        end
+    else
+        
+        if(isempty(Psi))
+            [mu,nu,beta_i,gamma,PHI] = predictMissing(X(ind,:),Gamma,w,v,b,P,iSigma_w,priors);
+        else
+            [mu,nu,beta_i,gamma,PHI] = predictNoisyMissing(X(ind,:),Psi(:,:,ind),Gamma,w,v,b,P,iSigma_w,priors);
+        end
+        
+    end
+
+function [mu,nu,beta_i,gamma,PHI] = predictFull(X,theta,w,iSigma_w,model)
+
+    [n,~] = size(X);
+    [~,k] = size(w);
+    
+    [PHI,~,ElnS] = getPHI(X,[],theta,model,[]);
+
+    mu = PHI*w;
+
     nu = zeros(n,k);
 
-    Ef2 = zeros(n,k);
-    Vg = zeros(n,k);
+    for out=1:k
+        nu(:,out) = sum(PHI.*(PHI*iSigma_w(:,:,out)),2);
+    end
+
+    beta_i = exp(ElnS);
+    gamma = zeros(n,k);
+function [mu,nu,beta_i,gamma,PHI] = predictNoisy(X,Psi,Gamma,w,v,b,P,iSigma_w,theta,model)
+
+    [n,d] = size(X);
+    [m,k] = size(w);
     
-    P = reshape(theta(1:m*d),m,d);
+    iSigma = zeros(d,d,m);
+    Sigma = zeros(d,d,m);
+    lnz = zeros(m,1);
+    
+    [PHI,~,ElnS] = getPHI(X,Psi,theta,model,[]);
+   
+    mu = PHI*w;
+    
+    nu = zeros(n,k);
+    VlnS = zeros(n,k);
+    gamma = zeros(n,k);
+    
+    for i=1:m
+
+        iSigma(:,:,i) = Gamma(:,:,i)'*Gamma(:,:,i);
+        Sigma(:,:,i) = inv(iSigma(:,:,i));
+
+        lnz(i) = -0.5*sum(log(svd(iSigma(:,:,i))));
+    end
     
     for id=1:n
         
-        for o=1:k
+        for i=1:m
 
-            switch(method)
+            for j=1:i
 
-                case 'GC'
+                iCij = iSigma(:,:,i)+iSigma(:,:,j);
+                Cij = inv(iCij);
+                cij = (P(i,:)*iSigma(:,:,i)+P(j,:)*iSigma(:,:,j))/iCij;
 
-                    Lambda = reshape(repmat(reshape(theta(m*d+1:m*d+d*d),d,d),1,m),d,d,m);
+                Delta = P(i,:)-P(j,:);
 
-                case 'VC'
+                lnZij = lnz(i)+lnz(j)-0.5*(Delta/(Sigma(:,:,i)+Sigma(:,:,j)))*Delta'-0.5*sum(log(svd(Sigma(:,:,i)+Sigma(:,:,j))));
 
-                    Lambda = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
-            end
+                Delta = X(id,:)-cij;
 
-            for i=1:m
+                Cij_plus_Psi = Psi(:,:,id)+Cij;
+
+                lnNxc = -0.5*(Delta/Cij_plus_Psi)*Delta'-0.5*sum(log(svd(Cij_plus_Psi)));
                 
-                Gi = Lambda(:,:,i)'*Lambda(:,:,i);
-                Si = inv(Lambda(:,:,i)'*Lambda(:,:,i));
-                
-                zi = sqrt(exp(sum(log(svd(Si)))));
+                ZijNxc = exp(lnZij+lnNxc);
 
-                for j=1:i
-                    
+                gamma(id,:) = gamma(id,:)+2*ZijNxc*(w(i,:).*w(j,:));
+                VlnS(id,:)  = VlnS(id,:)+2*ZijNxc*(v(i,:).*v(j,:));
+                nu(id,:)  = nu(id,:)+2*ZijNxc*squeeze(iSigma_w(i,j,:))';
 
-                    Gj = Lambda(:,:,j)'*Lambda(:,:,j);
-                    Sj = inv(Lambda(:,:,j)'*Lambda(:,:,j));
-                    zj = sqrt(exp(sum(log(svd(Sj)))));
-
-                    Cij = inv(Gi+Gj);
-                    cij = (P(i,:)*Gi+P(j,:)*Gj)*Cij;
-                    
-                    Delta = P(i,:)-P(j,:);
-
-                    Zij = zi*zj*exp(-0.5*(Delta/(Si+Sj))*Delta'-0.5*sum(log(svd(Si+Sj))));
-
-                    Delta = X(id,:)-cij;
-
-                    Cij_plus_Psi = Psi(:,:,id)+Cij;
-
-                    Nxc = exp(-0.5*(Delta/Cij_plus_Psi)*Delta'-0.5*sum(log(svd(Cij_plus_Psi))));
-
-                    Ef2(id,o) = Ef2(id,o)+2*w(i,o)*w(j,o)*Zij*Nxc;
-                    Vg(id,o)  = Vg(id,o)+2*v(i,o)*v(j,o)*Zij*Nxc;
-                    nu(id,o)  = nu(id,o)+2*iSigma_w(i,j,o)*Zij*Nxc;
-
-                end
-
-                Ef2(id,o) = Ef2(id,o)-w(i,o)*w(j,o)*Zij*Nxc;
-                Vg(id,o)  = Vg(id,o)-v(i,o)*v(j,o)*Zij*Nxc;
-                nu(id,o)  = nu(id,o)-iSigma_w(i,j,o)*Zij*Nxc;
-
-                if(joint)
-
-                    cij = (X(id,:)+(P(i,:)*Gi)*Psi(:,:,id))*inv(Psi(:,:,id)+Si)*Si;
-
-                    for j=1:d
-
-                        Nxc = PHI(id,i)*cij(j);
-
-                        Ef2(id,o) = Ef2(id,o)+2*w(i,o)*w(m+j,o)*Nxc;
-                        nu(id,o)  = nu(id,o)+2*iSigma_w(i,m+j,o)*Nxc;
-
-                    end
-
-                    Ef2(id,o) = Ef2(id,o)+2*w(i,o)*w(m+d+1,o)*PHI(id,i);
-                    nu(id,o)  = nu(id,o)+2*iSigma_w(i,m+d+1,o)*PHI(id,i);
-                end
             end
 
-            if(joint)
+            gamma(id,:) = gamma(id,:)-ZijNxc*(w(i,:).*w(j,:));
+            VlnS(id,:)  = VlnS(id,:)-ZijNxc*(v(i,:).*v(j,:));
+            nu(id,:)  = nu(id,:)-ZijNxc*squeeze(iSigma_w(i,j,:))';
 
-                Exx = Psi(:,:,id)+X(id,:)'*X(id,:);
-                for i=1:d
-                    for j=1:i-1
-                        
-                        Ef2(id,o) = Ef2(id,o)+2*w(m+i,o)*w(m+j,o)*Exx(i,j);
-                        nu(id,o)  = nu(id,o)+2*iSigma_w(m+i,m+j,o)*Exx(i,j);
-                    end
+        end
 
-                    Ef2(id,o) = Ef2(id,o)+2*w(m+i,o)*w(m+d+1,o)*X(id,i);
-                    nu(id,o)  = nu(id,o)+2*iSigma_w(m+i,m+d+1,o)*X(id,i);
-                    
-                    Ef2(id,o) = Ef2(id,o)+Exx(i,i)*w(m+i,o)^2;
-                    nu(id,o)  = nu(id,o)+Exx(i,i)*iSigma_w(m+i,m+i,o);
+    end
+    
+    VlnS = VlnS-bsxfun(@minus,ElnS,b).^2;
+    gamma = gamma-mu.^2;
+    beta_i = exp(ElnS).*(1+0.5*VlnS);
+function [mu,nu,beta_i,gamma,PHI] = predictMissing(X,Gamma,w,v,b,P,iSigma_w,priors)
+    
+    o = ~isnan(X(1,:));
+    do = sum(o);
+    du = sum(~o);
+    
+    [n,d] = size(X);
+    [m,k] = size(w);
+    
+    PHI = zeros(n,m);
+    
+    gamma = zeros(n,k);
+    nu = zeros(n,k);
+    VlnS = zeros(n,k);
+    
+    Ex = zeros(n,m);   
+    
+    R = zeros(do,du,m);
+    Psi_hat = zeros(d,d,m);
+    X_hat = zeros(n,d,m);
+    lnz = zeros(1,m);
 
-                end
+    Sigma = zeros(d,d,m);
+    iSigma = zeros(d,d,m);
+    
+    for i=1:m
+ 
+        iSigma(:,:,i) = Gamma(:,:,i)'*Gamma(:,:,i);
+        Sigma(:,:,i)  = inv(iSigma(:,:,i));
+        
+        lnz(i) = -0.5*sum(log(svd(iSigma(:,:,i))));
 
-                Ef2(id,o) = Ef2(id,o)+w(m+d+1,o)^2;
-                nu(id,o)  = nu(id,o)+iSigma_w(m+d+1,m+d+1,o);
+        Delta = bsxfun(@minus,X(:,o),P(i,o));
+        Ex(:,i) = exp(-0.5*sum((Delta/Sigma(o,o,i)).*Delta,2)-0.5*sum(log(svd(Sigma(o,o,i)))))*priors(i);
+        
+        R(:,:,i) = Sigma(o,o,i)\Sigma(o,~o,i);
+        
+        Psi_hat(~o,~o,i) = Sigma(~o,~o,i)-Sigma(~o,o,i)*R(:,:,i);
+        
+        X_hat(:,~o,i) = bsxfun(@plus,bsxfun(@minus,X(:,o),P(i,o))*R(:,:,i),P(i,~o));
+        X_hat(:,o,i) = X(:,o);
+    end
+
+    
+    Pio = bsxfun(@rdivide,Ex,sum(Ex,2));
+    
+    for i=1:m
+        for j=1:i
+
+            iCij = iSigma(:,:,i)+iSigma(:,:,j);
+            Cij = inv(iCij);
+            cij = (P(i,:)*iSigma(:,:,i)+P(j,:)*iSigma(:,:,j))/iCij;
+            
+            Delta = bsxfun(@minus,X_hat(:,:,j),P(i,:));
+            N = exp(-0.5*sum((Delta/(Sigma(:,:,i)+Psi_hat(:,:,j))).*Delta,2)-0.5*sum(log(svd(Sigma(:,:,i)+Psi_hat(:,:,j)))));
+            NPio = N.*Pio(:,j);
+            PHI(:,i) = PHI(:,i)+NPio;
+            
+            Delta = bsxfun(@minus,X_hat(:,:,i),P(j,:));
+            N = exp(-0.5*sum((Delta/(Sigma(:,:,j)+Psi_hat(:,:,i))).*Delta,2)-0.5*sum(log(svd(Sigma(:,:,j)+Psi_hat(:,:,i)))));
+            NPio = N.*Pio(:,i);
+            PHI(:,j) = PHI(:,j)+NPio;
+
+            EcCij = zeros(n,1);
+            for l=1:m
+                Delta = bsxfun(@minus,X_hat(:,:,l),cij);
+                N = exp(-0.5*sum((Delta/(Cij+Psi_hat(:,:,l))).*Delta,2)-0.5*sum(log(svd(Cij+Psi_hat(:,:,l)))));
+                EcCij = bsxfun(@plus,N.*Pio(:,l),EcCij);
             end
 
-            Vg(id,o) = Vg(id,o)-(lnBeta_i(id,o)-b(o)).^2;
-            gamma(id,o) = Ef2(id,o)-mu(id,o).^2;
+            Delta = P(i,:)-P(j,:);
+            Zij = exp(lnz(i)+lnz(j)-0.5*(Delta/(Sigma(:,:,i)+Sigma(:,:,j)))*Delta'-0.5*sum(log(svd(Sigma(:,:,i)+Sigma(:,:,j)))))*EcCij;
+            
+            gamma = gamma+2*Zij*(w(i,:).*w(j,:));
+            VlnS = VlnS+2*Zij*(v(i,:).*v(j,:));
+            nu = nu+2*Zij*squeeze(iSigma_w(i,j,:))';
+        end
+        
+        PHI(:,i) = PHI(:,i)-NPio;
+        
+        gamma = gamma-Zij*(w(i,:).*w(j,:));
+        VlnS = VlnS-Zij*(v(i,:).*v(j,:));
+        nu = nu-Zij*squeeze(iSigma_w(i,j,:))';
+
+    end
+    
+    PHI = bsxfun(@times,PHI,exp(lnz));
+    
+    mu = PHI*w;
+    ElnS = PHI*v;
+    
+    
+    VlnS = VlnS-ElnS.^2;
+   
+    ElnS = bsxfun(@plus,ElnS,b);
+
+    beta_i = exp(ElnS).*(1+0.5*VlnS);
+
+    gamma = gamma-mu.^2;
+function [mu,nu,beta_i,gamma,PHI] = predictNoisyMissing(X,Psi,Gamma,w,v,b,P,iSigma_w,priors)
+
+    o = ~isnan(X(1,:));
+    do = sum(o);
+    du = sum(~o);
+    
+    [n,d] = size(X);
+    [m,k] = size(w);
+    
+    PHI = zeros(n,m);
+    gamma = zeros(n,k);
+    nu = zeros(n,k);
+    VlnS = zeros(n,k);
+    
+    Ex = zeros(n,m);   
+    
+    R = zeros(do,du,m);
+    Psi_hat = zeros(d,d,m,n);
+    X_hat = zeros(n,d,m);
+    lnz = zeros(1,m);
+
+    Sigma = zeros(d,d,m);
+    iSigma = zeros(d,d,m);
+    
+    for id=1:n
+        for i=1:m
+
+            iSigma(:,:,i) = Gamma(:,:,i)'*Gamma(:,:,i);
+
+            Sigma(:,:,i)  = inv(iSigma(:,:,i));
+            lnz(i) = -0.5*sum(log(svd(iSigma(:,:,i))));
+
+            Delta = bsxfun(@minus,X(id,o),P(i,o));
+            Ex(id,i) = exp(-0.5*sum((Delta/(Sigma(o,o,i)+Psi(o,o,id))).*Delta,2)-0.5*sum(log(svd(Sigma(o,o,i)+Psi(o,o,id)))))*priors(i);
+
+            R(:,:,i) = Sigma(o,o,i)\Sigma(o,~o,i);
+            T = [eye(do);R(:,:,i)'];
+
+            Psi_hat(:,:,i,id) = T*Psi(o,o,id)*T';
+            Psi_hat(~o,~o,i,id) = Psi_hat(~o,~o,i,id)+Sigma(~o,~o,i)-Sigma(~o,o,i)*R(:,:,i);
+
+            X_hat(id,~o,i) = bsxfun(@plus,bsxfun(@minus,X(id,o),P(i,o))*R(:,:,i),P(i,~o));
+            X_hat(id,o,i) = X(id,o);
+        end
+    end
+
+    Pio = bsxfun(@rdivide,Ex,sum(Ex,2));
+    
+    for id=1:n
+        for i=1:m
+            for j=1:i
+
+                iCij = iSigma(:,:,i)+iSigma(:,:,j);
+                Cij = inv(iCij);
+                cij = (P(i,:)*iSigma(:,:,i)+P(j,:)*iSigma(:,:,j))/iCij;
+
+                Delta = bsxfun(@minus,X_hat(id,:,j),P(i,:));
+                N = exp(-0.5*sum((Delta/(Sigma(:,:,i)+Psi_hat(:,:,j,id))).*Delta,2)-0.5*sum(log(svd(Sigma(:,:,i)+Psi_hat(:,:,j,id)))));
+                NPio = N*Pio(id,j);
+                PHI(id,i) = bsxfun(@plus,NPio,PHI(id,i));
+
+                Delta = bsxfun(@minus,X_hat(id,:,i),P(j,:));
+                N = exp(-0.5*sum((Delta/(Sigma(:,:,j)+Psi_hat(:,:,i,id))).*Delta,2)-0.5*sum(log(svd(Sigma(:,:,j)+Psi_hat(:,:,i,id)))));
+                NPio = N*Pio(id,i);
+                PHI(id,j) = bsxfun(@plus,NPio,PHI(id,j));
+
+                EcCij = 0;
+                for l=1:m
+                    Delta = bsxfun(@minus,X_hat(id,:,l),cij);
+                    N = exp(-0.5*sum((Delta/(Cij+Psi_hat(:,:,l,id))).*Delta,2)-0.5*sum(log(svd(Cij+Psi_hat(:,:,l,id)))));
+                    EcCij = bsxfun(@plus,N.*Pio(id,l),EcCij);
+                end
+
+                Delta = P(i,:)-P(j,:);
+                Pij = exp(lnz(i)+lnz(j)-0.5*(Delta/(Sigma(:,:,i)+Sigma(:,:,j)))*Delta'-0.5*sum(log(svd(Sigma(:,:,i)+Sigma(:,:,j)))))*EcCij;
+
+                gamma(id,:) = gamma(id,:)+2*Pij*(w(i,:).*w(j,:));
+                VlnS(id,:) = VlnS(id,:)+2*Pij*(v(i,:).*v(j,:));
+                nu(id,:) = nu(id,:)+2*Pij*squeeze(iSigma_w(i,j,:))';
+            end
+
+            PHI(id,j) = PHI(id,i)-NPio;
+
+            gamma(id,:) = gamma(id,:)-Pij*(w(i,:).*w(j,:));
+            VlnS(id,:) = VlnS(id,:)-Pij*(v(i,:).*v(j,:));
+            nu(id,:) = nu(id,:)-Pij*squeeze(iSigma_w(i,j,:))';
 
         end
     end
     
-end
+    PHI = bsxfun(@times,PHI,exp(lnz));
+    
+    mu = PHI*w;
+    ElnS = PHI*v;
+    
+    VlnS = VlnS-ElnS.^2;
+   
+    ElnS = bsxfun(@plus,ElnS,b);
+
+    beta_i = exp(ElnS).*(1+0.5*VlnS);
+
+    gamma = gamma-mu.^2;
+    
+

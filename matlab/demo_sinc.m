@@ -8,8 +8,6 @@ m = 100;                                % number of basis functions to use [requ
  
 method = 'VL';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
  
-joint = true;                           % jointly learn a prior linear mean-function [default=true]
- 
 heteroscedastic = true;                 % learn a heteroscedastic noise process, set to false if only interested in point estimates [default=true]
  
 normalize = true;                       % pre-process the input by subtracting the means and dividing by the standard deviations [default=true]
@@ -22,7 +20,7 @@ trainSplit = 0.2;                       % percentage of data to use for training
 validSplit = 0.2;                       % percentage of data to use for validation
 testSplit  = 0.6;                       % percentage of data to use for testing
 
-inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = false;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
 
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
 
@@ -47,6 +45,8 @@ if(inputNoise)
     Psi = gamrnd(a,b,size(X)); % sample from the gamma distribution with mean=E and variance=V
     
     X = X+randn(size(X)).*sqrt(Psi);  % create a noisy input
+else
+    Psi = [];
 end
 
 %%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
@@ -54,25 +54,16 @@ end
 % split data into training, validation and testing
 [training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
 
-if(inputNoise) 
-    % initialize the model
-    model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'joint',joint,'training',training,'Psi',Psi);
+% initialize the model
+model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'training',training,'Psi',Psi);
 
-    % train the model
-    model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
+% train the model
+model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
+    
+% use the model to generate predictions for the test set
 
-    % use the model to generate predictions for the test set
-    [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model,'Psi',Psi(testing,:)); % generate predictions for the test set
-else
-    % initialize the model
-    model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'joint',joint,'training',training);
+[mu,sigma,nu,beta_i,gamma] = predict(X,model,'Psi',Psi,'selection',testing);
 
-    % train the model
-    model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation);
-
-    % use the model to generate predictions for the test set
-    [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model); % generate predictions for the test set
-end
 
 % mu     = the best point estimate
 % nu     = variance due to data density
@@ -83,8 +74,8 @@ end
 %%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 Xs = linspace(-15,15,1000)';
 
-[mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'Psi',[]); % generate predictions, note that this will use the model with the best score on the validation set
-% [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'Psi',[],'whichSet','last'); % this will use the model with the best score on the training set
+[mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model); % generate predictions, note that this will use the model with the best score on the validation set
+% [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'whichSet','last'); % this will use the model with the best score on the training set
 
 hold on;
 
@@ -111,7 +102,7 @@ h2 = plot(Xs,mu,'r-','LineWidth',2);
 
 axis tight;
 
-legend([h1 h2 h3], {'95\%','$\mathbf{f}_{*}$','$\mbox{sinc}(x)$'},'FontSize',18,'Location','NorthWest','interpreter','latex');
+legend([h1 h2 h3], {'$\pm 2\sigma(x)$','$\mu(x)$','$\mbox{sinc}(x)$'},'FontSize',18,'Location','NorthWest','interpreter','latex');
 
 xlabel('$x$','interpreter','latex','FontSize',30);
 ylabel('$y$','interpreter','latex','FontSize',30);

@@ -10,21 +10,8 @@ k = model.k;
 m = model.m;
 method = model.method;
 heteroscedastic = model.heteroscedastic;
-joint = model.joint;
 
 [n,d] = size(X);
-
-learnPsi = ischar(Psi);
-if(learnPsi)
-    if(method(2)=='C')
-        S = reshape(theta(end-d*d+1:end),d,d);
-        Psi = reshape(repmat(S'*S,1,n),d,d,n);
-    else
-        S = reshape(theta(end-d+1:end),1,d);
-        Psi = ones(n,1)*S.^2;
-    end
-    dS = zeros(size(S));
-end
 
 if(isempty(training))
     training = true(n,1);
@@ -36,19 +23,13 @@ end
 
 n = sum(training);
 
-if(joint)
-    a_dim = m+d+1;
-else
-    a_dim = m;
-end
-
+g_dim = model.g_dim;
+    
 P = reshape(theta(1:m*d),m,d);
 
-[PHI,Lambda,lnBeta_i] = getPHI(X,Psi,theta,model,training);
+[PHI,Gamma,lnBeta_i] = getPHI(X,Psi,theta,model,training);
 
-l_dim = length(Lambda(:));
-
-lnAlpha = reshape(theta(m*d+l_dim+1:m*d+l_dim+a_dim*k),a_dim,k);
+lnAlpha = reshape(theta(m*d+g_dim+1:m*d+g_dim+m*k),m,k);
 
 if(isempty(Y))
     nlogML = 0;
@@ -70,12 +51,12 @@ alpha = exp(lnAlpha);
 da = alpha;
 
 nu = zeros(n,k);
-w = zeros(a_dim,k);
-iSigma_w = zeros(a_dim,a_dim,k);
+w = zeros(m,k);
+iSigma_w = zeros(m,m,k);
 logdet = zeros(1,k);
-dwda = zeros(a_dim,k);
+dwda = zeros(m,k);
 dlnPHI = zeros(n,m);
-dlnAlpha = zeros(a_dim,k);
+dlnAlpha = zeros(m,k);
 
 for i=1:k
     
@@ -114,16 +95,15 @@ db = sum(dbeta);
 
 if(heteroscedastic)
     
-    v = reshape(theta(m*d+l_dim+a_dim*k+k+1:m*d+l_dim+a_dim*k+k+m*k),m,k);
+    v = reshape(theta(m*d+g_dim+m*k+k+1:m*d+g_dim+m*k+k+m*k),m,k);
     
-    lnTau = reshape(theta(m*d+l_dim+a_dim*k+k+m*k+1:m*d+l_dim+a_dim*k+k+m*k+m*k),m,k);
+    lnTau = reshape(theta(m*d+g_dim+m*k+k+m*k+1:m*d+g_dim+m*k+k+m*k+m*k),m,k);
     tau = exp(lnTau);
     
     nlogML = nlogML-0.5*sum((v.^2).*tau)+0.5*sum(lnTau)-0.5*m*k*log(2*pi);
     dv = (PHI(:,1:m)'*dbeta)-v.*tau;
     dlnTau = -0.5*tau.*v.^2+0.5;
     dlnPHI = dlnPHI+(dbeta*v');    
-    
 
 end
 
@@ -133,231 +113,121 @@ nlogML = sum(nlogML)-0.5*log(2*pi)*sum(sum(omega(training,:)));
 dPHI = dlnPHI.*PHI(:,1:m);
 
 dP = zeros(size(P));
-dLambda = zeros(size(Lambda));
+dGamma = zeros(size(Gamma));
+
+missing = isnan(X(training,:));
+    
+list = true(n,1);
+groups = logical([]);
+
+while(sum(list)>0)
+    first = find(list,1);
+    group = false(n,1);
+    group(list) = sum(abs(bsxfun(@minus,missing(list,:),missing(first,:))),2)==0;
+    groups = [groups group];
+    list(group)=false;
+end
 
 list = find(training);
 
-for j=1:m
+for i=1:size(groups,2)
     
-    Delta = bsxfun(@minus,X(training,:),P(j,:));
-    
-    switch(method)
-        case 'GL'
-            
-            if(j==1)
-                Sigma = Lambda.^-2;
-                iSigma = Lambda.^2;
-            end
-            
-            if(isempty(Psi))
-                
-                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
-                dLambda = dLambda-Lambda*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))));
-%                 dLambda = dLambda+Lambda*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))))*iSigma^2; % Variance
-                                        
-            else
+    for j=1:m
 
-               
-                Psi_plus_Sigma = Psi(training,:)+Sigma;
-                Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
+        group = groups(:,i);
 
-                dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
-                
-                if(learnPsi)
-                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
-                end
+        u = missing(find(group,1),:);
+        o = ~u;
+        
+        Delta = bsxfun(@minus,X(training,o),P(j,o));
 
-                dLambda = dLambda-Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
-%                 dLambda = dLambda+Lambda*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
-  
-                
-            end
-        case 'VL'
+        if(method(2)=='C')
             
-            Sigma = Lambda(j).^-2;
-            iSigma = Lambda(j).^2;
+            iSigma = Gamma(:,:,j)'*Gamma(:,:,j);
+            Sigma  = inv(iSigma);
+            
             
             if(isempty(Psi))
-                
-                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
-                dLambda(j) = dLambda(j)-Lambda(j)*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))));
-%                 dLambda(j) = dLambda(j)+Lambda(j)*sum(sum(bsxfun(@times,Delta.^2,dPHI(:,j))))*iSigma^2; % Variance
-                                        
+                iSoo = inv(Sigma(o,o));
+                dP(j,o) = dP(j,o)+(dPHI(group,j)'*Delta(group,:))*iSoo;
+
+                diSoo = -0.5*bsxfun(@times,Delta(group,:),dPHI(group,j))'*Delta(group,:);
+
+                GuuGuo = inv(iSigma(u,u))*iSigma(u,o);
+                dGo = 2*(Gamma(:,o,j)-Gamma(:,u,j)*GuuGuo)*diSoo;
+                dGamma(:,o,j) = dGamma(:,o,j)+dGo;
+                dGamma(:,u,j) = dGamma(:,u,j)-dGo*GuuGuo';
+
+
+%                 dCoo = 0.5*iSoo*(bsxfun(@times,Delta(group,o),dPHI(group,j))'*Delta(group,o))*iSoo;
+%                 dLambda(:,o,j) = dLambda(:,o,j)+2*Lambda(:,o,j)*dCoo;
             else
 
-                Psi_plus_Sigma = Psi(training,:)+Sigma;
-                Psi_x_iSigma = (1+Psi(training,:)*iSigma).^-1;
-
-                dP(j,:) = dP(j,:)+dPHI(:,j)'*bsxfun(@rdivide,Delta,Psi_plus_Sigma);
+                index = find(group);
                 
-                if(learnPsi)
-                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
+                for id=1:sum(group)
+                    
+                    iPSoo = inv(Sigma(o,o)+Psi(o,o,list(index(id))));
+
+                    dP(j,o) = dP(j,o)+dPHI(index(id),j)*Delta(index(id),:)*iPSoo;
+                    
+                    dSoo = 0.5*(inv(Sigma(o,o))-iPSoo+iPSoo*(Delta(index(id),:)'*Delta(index(id),:))*iPSoo);
+
+                    diSoo = -Sigma(o,o)*dSoo*Sigma(o,o);
+
+                    GuuGuo = inv(iSigma(u,u))*iSigma(u,o);
+                    dGo = 2*(Gamma(:,o,j)-Gamma(:,u,j)*GuuGuo)*diSoo;
+                    dGamma(:,o,j) = dGamma(:,o,j)+dPHI(index(id),j)*dGo;
+                    dGamma(:,u,j) = dGamma(:,u,j)-dPHI(index(id),j)*dGo*GuuGuo';
+
+%                     dLambda(:,o,j) = dLambda(:,o,j)+2*dPHI(index(id),j)*Lambda(:,o,j)*dSoo;
                 end
-
-                dLambda(j) = dLambda(j)-Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))));
-%                 dLambda(j) = dLambda(j)+Lambda(j)*sum((dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma))))*iSigma^2; % Variance
-  
                 
             end
-        case 'GD'
-            
-            if(j==1)
-                Sigma = Lambda.^-2;
-                iSigma = Lambda.^2;
-            end
-            
+
+        else
+            Sigma = Gamma(j,o).^-2;
             if(isempty(Psi))
                 
-                    dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta).*iSigma;
-                    
-                    dLambda = dLambda-Lambda.*sum(bsxfun(@times,Delta.^2,dPHI(:,j)));
-%                     dLambda = dLambda+Lambda.*sum(bsxfun(@times,Delta.^2,dPHI(:,j))).*iSigma.^2; % Variance
-                                        
+                    dP(j,o) = dP(j,o)+(dPHI(group,j)'*Delta(group,:))./Sigma;
+
+                    dGamma(j,o) = dGamma(j,o)-Gamma(j,o).*sum(bsxfun(@times,Delta(group,:).^2,dPHI(group,j)));
+
+%                   dLambda(j,o) = dLambda(j,o)+Lambda(j,o).*sum(bsxfun(@times,Delta(group,:).^2,dPHI(group,j)))./Sigma(j,o).^2; % Variance
+
             else
 
-                
-                Psi_plus_Sigma = bsxfun(@plus,Psi(training,:),Sigma);
+                    Psi_plus_Sigma = bsxfun(@plus,Psi(list(group),o),Sigma);
+                    
+                    dP(j,o) = dP(j,o)+dPHI(group,j)'*(Delta(group,:)./Psi_plus_Sigma);
 
-                dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
-                
-                Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
-                
-                if(learnPsi)
-                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
-                end
-                
-                dLambda = dLambda-Lambda.*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
+                    Psi_x_iSigma = (1+bsxfun(@rdivide,Psi(list(group),o),Sigma)).^-1;
 
-%                 dLambda = dLambda+Lambda.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
-  
-                
+                    dGamma(j,o) = dGamma(j,o)-Gamma(j,o).*(dPHI(group,j)'*(Delta(group,:).*Psi_x_iSigma).^2-dPHI(group,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
+
+%                   dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
+
             end
-        case 'VD'
-
-            Sigma = Lambda(j,:).^-2;
-            iSigma = Lambda(j,:).^2;
-            
-            if(isempty(Psi))
-                
-                    
-                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta).*iSigma;
-
-                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*sum(bsxfun(@times,Delta.^2,dPHI(:,j)));
-
-%                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*sum(bsxfun(@times,Delta.^2,dPHI(:,j))).*iSigma.^2; % Variance
-                                        
-            else
-
-
-                Psi_plus_Sigma = bsxfun(@plus,Psi(training,:),Sigma);
-
-                dP(j,:) = dP(j,:)+dPHI(:,j)'*(Delta./Psi_plus_Sigma);
-
-                Psi_x_iSigma = (1+bsxfun(@times,Psi(training,:),iSigma)).^-1;
-                
-                if(learnPsi)
-                    dS = dS+S.*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1));
-                end
-                
-                dLambda(j,:) = dLambda(j,:)-Lambda(j,:).*(dPHI(:,j)'*(Delta.*Psi_x_iSigma).^2-dPHI(:,j)'*(bsxfun(@minus,bsxfun(@times,Psi_x_iSigma,Sigma),Sigma)));
-                
-%                 dLambda(j,:) = dLambda(j,:)+Lambda(j,:).*(dPHI(:,j)'*(power(Delta./Psi_plus_Sigma,2)-Psi_plus_Sigma.^-1)+sum(dPHI(:,j))*iSigma); % Variance
-  
-
-            end 
-        case 'GC'
-
-            if(j==1)
-                iSigma = Lambda'*Lambda;
-                Sigma = inv(iSigma);
-            end
-            
-            if(isempty(Psi))
-                
-                
-                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
-
-                diSigma = -0.5*bsxfun(@times,Delta,dPHI(:,j))'*Delta;
-                
-%                 dSigma = -iSigma*diSigma*iSigma;
-%                 dLambda = dLambda+2*Lambda*dSigma; % Variance
-                
-                dLambda = dLambda+2*Lambda*diSigma;
-                
-                
-            else
-
-
-                for i=1:n
-
-                    invCS = inv(Sigma+Psi(:,:,list(i)));
-                    
-                    dP(j,:) = dP(j,:)+dPHI(i,j)*Delta(i,:)*invCS;
-            
-                    dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
-                    
-                    if(learnPsi)
-                        dS = dS+2*dPHI(i,j)*S*(dSigma-0.5*iSigma);
-                    end
-                    
-                    diSigma = -Sigma*dSigma*Sigma;
-                    dLambda = dLambda+2*dPHI(i,j)*Lambda*diSigma;                
-                    
-%                     dLambda = dLambda+2*dPHI(i,j)*Lambda*dSigma; % Variance
-                    
-                end
-            end
-        case 'VC'
-
-            iSigma = Lambda(:,:,j)'*Lambda(:,:,j);
-            Sigma = inv(iSigma);
-            
-            if(isempty(Psi))
-                
-                dP(j,:) = dP(j,:)+(dPHI(:,j)'*Delta)*iSigma;
-
-                diSigma = -0.5*bsxfun(@times,Delta,dPHI(:,j))'*Delta;
-                
-                
-                dLambda(:,:,j) = 2*Lambda(:,:,j)*diSigma;
-                
-
-%                 dSigma = -iSigma*diSigma*iSigma;
-%                 dLambda(:,:,j) = 2*Lambda(:,:,j)*dSigma; % Variance
-                
-            else
-                
-                for i=1:n
-
-                    invCS = inv(Sigma+Psi(:,:,list(i)));
-                    
-                    dP(j,:) = dP(j,:)+dPHI(i,j)*Delta(i,:)*invCS;
-            
-                    dSigma = 0.5*(iSigma-invCS+invCS*(Delta(i,:)'*Delta(i,:))*invCS);
-                    
-                    if(learnPsi)
-                        dS = dS+2*dPHI(i,j)*S*(dSigma-0.5*iSigma);
-                    end
-                    
-                    diSigma = -Sigma*dSigma*Sigma;
-                    dLambda(:,:,j) = dLambda(:,:,j)+2*dPHI(i,j)*Lambda(:,:,j)*diSigma;                
-
-%                     dLambda(:,:,j) = dLambda(:,:,j)+2*dPHI(i,j)*Lambda(:,:,j)*dSigma; % Variance
-                    
-                end
-            end
+        end
     end
-    
 end
 
-grad = [dP(:);dLambda(:);dlnAlpha(:);db(:)];
+switch(method)
+                        
+    case 'GL'
+        dGamma = sum(dGamma(:));
+    case 'VL'
+        dGamma = sum(dGamma,2);
+    case 'GD'
+        dGamma = sum(dGamma,1);            
+    case 'GC'
+        dGamma = sum(dGamma,3);
+end
+
+grad = [dP(:);dGamma(:);dlnAlpha(:);db(:)];
 
 if(heteroscedastic)
     grad = [grad;dv(:);dlnTau(:)];
-end
-
-if(learnPsi)
-    grad = [grad;dS(:)];
 end
 
 nlogML = -nlogML/(n*k);

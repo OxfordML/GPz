@@ -1,211 +1,128 @@
-function [PHI,Lambda,lnBeta_i,N] = getPHI(X,Psi,theta,model,set)
+function [PHI,Gamma,lnBeta_i,N] = getPHI(X,Psi,theta,model,selection)
 
-    if(isempty(set))
-        set = true(size(X,1),1);
+    if(isempty(selection))
+        selection = true(size(X,1),1);
     end
 
-    n = sum(set);
+    n = sum(selection);
     d = model.d;
     m = model.m;
     k = model.k;
 
     method = model.method;
     
-    if(model.joint)
-        a_dim = m+d+1;
-    else
-        a_dim = m;
+    X = X(selection,:);
+    
+    if(~isempty(Psi))
+        if(method(2)=='C')
+            Psi = Psi(:,:,selection);
+        else
+            Psi = Psi(selection,:);
+        end
     end
-     
+    
     P = reshape(theta(1:m*d),m,d);
     
-    list = find(set);
-    
     switch(method)
+                        
         case 'GL'
-            
-            Lambda = theta(m*d+1);
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            
-            Ci = Lambda^2;
-            C = Lambda^-2;
-
-            for j = 1:m
-
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
-                
-                if(isempty(Psi))
-                    lnPHI(:,j) = -0.5*sum(Ci*Delta.^2,2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*d*log(C)-0.5*d*log(2*pi);
-                else
-
-                    SxPlusC = Psi(set,:)+C;
-
-                    lnPHI(:,j) = -0.5*sum((Delta.^2)./SxPlusC,2)-0.5*sum(log(1+Psi(set,:)*Ci),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*d*log(C)-0.5*d*log(2*pi);
-                end
-
-            end
+            Gamma  = repmat(theta(m*d+1),m,d);
         case 'VL'
-            
-            Lambda = theta(m*d+1:m*d+m)';
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            
-            for j = 1:m
-
-                Ci = Lambda(j)^2;
-                C = Lambda(j)^-2;
-                
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
-                
-                if(isempty(Psi))
-                    
-                    lnPHI(:,j) = -0.5*sum(Ci*Delta.^2,2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*d*log(C)-0.5*d*log(2*pi);
-                else
-
-                    SxPlusC = Psi(set,:)+C;
-
-                    lnPHI(:,j) = -0.5*sum((Delta.^2)./SxPlusC,2)-0.5*sum(log(1+Psi(set,:)*Ci),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*d*log(C)-0.5*d*log(2*pi);
-
-                end
-
-            end
+            Gamma  = repmat(theta(m*d+1:m*d+m),1,d);
         case 'GD'
-            
-            Lambda = theta(m*d+1:m*d+d)';
-            
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            Ci = Lambda.^2;
-            C = Lambda.^-2;
-            for j = 1:m
-
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
-                
-                if(isempty(Psi))
-                    
-                    lnPHI(:,j) = -0.5*sum((bsxfun(@times,Delta.^2,Ci)),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(C))-0.5*d*log(2*pi);
-                    
-                else
-
-                    SxPlusC = bsxfun(@plus,Psi(set,:),C);
-
-                    lnPHI(:,j) = -0.5*sum((Delta.^2)./SxPlusC,2)-0.5*sum(log(1+bsxfun(@times,Psi(set,:),Ci)),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(C))-0.5*d*log(2*pi);
-                end
-
-            end
+            Gamma  = repmat(theta(m*d+1:m*d+d)',m,1);
         case 'VD'
-
-            Lambda = reshape(theta(m*d+1:m*d+m*d),m,d);
-            
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            
-            for j = 1:m
-
-                Ci = Lambda(j,:).^2;
-                C = Lambda(j,:).^-2;
-                
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
-                
-                if(isempty(Psi))
-
-                    lnPHI(:,j) = -0.5*sum((bsxfun(@times,Delta.^2,Ci)),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(C))-0.5*d*log(2*pi);
-
-                else
-                        
-                    SxPlusC = bsxfun(@plus,Psi(set,:),C);
-
-                    lnPHI(:,j) = -0.5*sum((Delta.^2)./SxPlusC,2)-0.5*sum(log(1+bsxfun(@times,Psi(set,:),Ci)),2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(C))-0.5*d*log(2*pi);
-
-                end
-
-            end
-            
+            Gamma = reshape(theta(m*d+1:m*d+m*d),m,d);
         case 'GC'
-            
-            Lambda = reshape(theta(m*d+1:m*d+d*d),d,d);
-
-            Ci = Lambda'*Lambda;
-            C = inv(Ci);
-
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            
-            
-            for j = 1:m
-                
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
-                
-                if(isempty(Psi))
-                        
-                    lnPHI(:,j) = -0.5*sum((Delta/C).*Delta,2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(svd(C)))-0.5*d*log(2*pi);
-                    
-                else
-
-                    for i=1:n
-                                                
-                        lnPHI(i,j) = -0.5*sum((Delta(i,:)/(C+Psi(:,:,list(i)))).*Delta(i,:),2)-0.5*sum(log(svd(eye(d)+C\Psi(:,:,list(i)))));
-                        lnN(i,j) = lnPHI(i,j)-0.5*sum(log(svd(C)))-0.5*d*log(2*pi);
-
-                    end
-                end
-            end
+            Gamma  = reshape(repmat(reshape(theta(m*d+1:m*d+d*d),d,d),1,m),d,d,m);
         case 'VC'
-            
-            Lambda = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
-            
-            lnPHI = zeros(n,m);
-            lnN = zeros(n,m);
-            
-            
-            for j = 1:m
+            Gamma = reshape(theta(m*d+1:m*d+d*d*m),d,d,m);
+    end
+    
+    
+    missing = isnan(X);
+    
+    list = true(n,1);
+    groups = logical([]);
+
+    while(sum(list)>0)
+        first = find(list,1);
+        group = false(n,1);
+        group(list) = sum(abs(bsxfun(@minus,missing(list,:),missing(first,:))),2)==0;
+        groups = [groups group];
+        list(group)=false;
+    end
+    
+    lnPHI = zeros(n,m);
+    lnN = zeros(n,m);
+    
                 
-                Ci = Lambda(:,:,j)'*Lambda(:,:,j);
-                C = inv(Ci);
+    for i=1:size(groups,2)
+
+        group = groups(:,i);
+
+        u = isnan(X(find(group,1),:));
+        o = ~u;
+            
+        for j=1:m
+            
+            Delta = bsxfun(@minus,X(:,o),P(j, o));
+            
+            if(method(2)=='C')
                 
-                Delta = bsxfun(@minus,X(set,:),P(j, :));
+                Sigma = inv(Gamma(:,:,j)'*Gamma(:,:,j));
                 
                 if(isempty(Psi))
-                    lnPHI(:,j) = -0.5*sum((Delta/C).*Delta,2);
-                    lnN(:,j) = lnPHI(:,j)-0.5*sum(log(svd(C)))-0.5*d*log(2*pi);
+                    lnPHI(group,j) = -0.5*sum((Delta(group,:)/Sigma(o,o)).*Delta(group,:),2)-0.5*sum(u)*log(2);
+                    lnN(group,j) = lnPHI(group,j)-0.5*sum(log(svd(Sigma(o,o))))-0.5*sum(o)*log(2*pi)+0.5*sum(u)*log(2);
                 else
 
-                    for i=1:n
+                    index = find(group);
+                    
+                    for id=1:sum(group)
                         
-                        lnPHI(i,j) = -0.5*sum((Delta(i,:)/(C+Psi(:,:,list(i)))).*Delta(i,:),2)+0.5*sum(log(svd(C)))-0.5*sum(log(svd(C+Psi(:,:,list(i)))));
-                        lnN(i,j) = lnPHI(i,j)-0.5*sum(log(svd(C)))-0.5*d*log(2*pi);
+                        PsiPlusSigma = Psi(o,o,index(id))+Sigma(o,o);
+
+                        lnPHI(index(id),j) = -0.5*sum((Delta(index(id),:)/PsiPlusSigma).*Delta(index(id),:),2)+0.5*sum(log(svd(Sigma(o,o))))-0.5*sum(log(svd(PsiPlusSigma)))-0.5*sum(u)*log(2);
+                        lnN(index(id),j) = lnPHI(index(id),j)-0.5*sum(log(svd(Sigma(o,o))))-0.5*sum(o)*log(2*pi)+0.5*sum(u)*log(2);
                     end
                 end
+                
+            else
+                
+                Sigma = Gamma(j,o).^-2;
+                
+                if(isempty(Psi))
 
+                    lnPHI(group,j) = -0.5*sum((bsxfun(@rdivide,Delta(group,:).^2,Sigma)),2)-0.5*sum(u)*log(2);
+                    lnN(group,j) = lnPHI(group,j)-0.5*sum(log(Sigma))-0.5*sum(o)*log(2*pi)+0.5*sum(u)*log(2);
+
+                else
+                    
+                    PsiPlusSigma = bsxfun(@plus,Psi(group,o),Sigma);
+                    
+                    lnPHI(group,j) = -0.5*sum((Delta(group,:).^2)./PsiPlusSigma,2)-0.5*sum(log(1+bsxfun(@rdivide,Psi(group,o),Sigma)),2)-0.5*sum(u)*log(2);
+                    lnN(group,j) = lnPHI(group,j)-0.5*sum(log(Sigma))-0.5*sum(o)*log(2*pi)+0.5*sum(u)*log(2);
+
+                end
             end
+        end
     end
+    
     
     PHI = exp(lnPHI);
     N = exp(lnN);
-    l_dim = length(Lambda(:));
-    b = theta(m*d+l_dim+a_dim*k+1:m*d+l_dim+a_dim*k+k)';
+    
+    g_dim = model.g_dim;
+    b = theta(m*d+g_dim+m*k+1:m*d+g_dim+m*k+k)';
     
     lnBeta_i = repmat(b,n,1);
 
     if(model.heteroscedastic)
-        v = reshape(theta(m*d+l_dim+a_dim*k+k+1:m*d+l_dim+a_dim*k+k+m*k),m,k);
+        v = reshape(theta(m*d+g_dim+m*k+k+1:m*d+g_dim+m*k+k+m*k),m,k);
 
         lnBeta_i = lnBeta_i+PHI*v;
     end
     
-    if(model.joint)
-        
-        PHI = [PHI X(set,:) ones(n,1)];
-    end
     
 end

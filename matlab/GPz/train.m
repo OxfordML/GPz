@@ -16,9 +16,11 @@ muY = model.muY;
 muX = model.muX;
 sdX = model.sdX;
 
-learnPsi = model.learnPsi;
+[n,d] = size(X);
 
-n = size(X,1);
+m = model.m;
+k = model.k;
+g_dim = model.g_dim;
 
 pnames =    { 'maxIter' 'maxAttempts' 'omega'     'training'     'validation'   'Psi'};
 defaults =  {  200      inf         ones(n,1)   true(n,1)      []   []};
@@ -31,8 +33,8 @@ X = bsxfun(@minus,X,muX);
 X = bsxfun(@rdivide,X,sdX);
 
 
-if(~learnPsi&&~isempty(Psi))
-    Psi = fixSx(Psi,n,sdX,method);
+if(~isempty(Psi))
+    Psi = fixPsi(Psi,n,sdX,method);
 end
 
 f = @(params) GPz(params,model,X,Y,Psi,omega,training,validation);
@@ -54,6 +56,13 @@ theta = minFunc(f,theta,options);
 model.last.theta = theta;
 model.last.w = w;
 model.last.iSigma_w = iSigma_w;
+model.last.priors = getPrior(X,Psi,theta,model,training);
+model.last.P = reshape(theta(1:m*d),m,d);
+
+if(model.heteroscedastic)
+    v = reshape(theta(m*d+g_dim+m*k+k+1:m*d+g_dim+m*k+k+m*k),m,k);
+    model.last.v = v;
+end
 
 
 theta = best_theta;
@@ -62,7 +71,12 @@ theta = best_theta;
 model.best.theta = theta;
 model.best.w = w;
 model.best.iSigma_w = iSigma_w;
+model.best.priors = getPrior(X,Psi,theta,model,training);
+model.best.P = reshape(theta(1:m*d),m,d);
 
-
+if(model.heteroscedastic)
+    v = reshape(theta(m*d+g_dim+m*k+k+1:m*d+g_dim+m*k+k+m*k),m,k);
+    model.best.v = v;
+end
 
 end

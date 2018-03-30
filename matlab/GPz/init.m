@@ -3,21 +3,33 @@ function model = init(X,Y,method,m,varargin)
 [n,d] = size(X);
 k = size(Y,2);
 
-pnames =    { 'heteroscedastic' 'normalize'   'omega'    'training'   'Psi' 'joint'};
-defaults =  { true                true          ones(n,1)   true(n,1)   [] true};
+pnames =    { 'heteroscedastic' 'normalize'   'omega'    'training'   'Psi'};
+defaults =  { true                true          ones(n,1)   true(n,1)   []};
 
 
-[heteroscedastic,normalize,omega,training,Psi,joint]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
+[heteroscedastic,normalize,omega,training,Psi]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
 
+if(d==1)
+    method(2) = 'L';
+end
+
+model.d = d;
 model.k = k;
 model.m = m;
 model.method = method;
 model.heteroscedastic = heteroscedastic;
-model.joint = joint;
 
 if(normalize)
-    muX = mean(X(training,:));
-    sdX = std(X(training,:));
+    Xz = X;
+    missing = isnan(X);
+    Xz(missing) = 0;
+
+    counts = sum(~missing);
+
+    muX = sum(Xz)./counts;
+
+    sdX = sum(Xz.^2)./counts;
+    sdX = sqrt(sdX-muX.^2);
 else
     muX = zeros(1,d);
     sdX = ones(1,d);
@@ -25,7 +37,7 @@ end
 
 muY = mean(Y(training,:));
 
-model.d = d;
+
 model.sdX = sdX;
 model.muX = muX;
 model.muY = muY;
@@ -35,49 +47,44 @@ Y = bsxfun(@minus,Y,muY);
 X = bsxfun(@minus,X,muX);
 X = bsxfun(@rdivide,X,sdX);
 
-learnPsi = ischar(Psi);
-
-if(~learnPsi&&~isempty(Psi))
-    Psi = fixSx(Psi,n,sdX,method);
+if(~isempty(Psi))
+    Psi = fixPsi(Psi,n,sdX,method);
 end
 
 b = log(var(Y(training,:)));
-lnAlpha = -log(var(Y(training,:)));
+lnAlpha = repmat(-log(var(Y(training,:))),m,1);
 
-if(joint)
-    lnAlpha = repmat(lnAlpha,m+d+1,1);
-else
-    lnAlpha = repmat(lnAlpha,m,1);
-end
-
-[mu,~,~,Vi] = pca(X(training,:),1);
+[mu,sigmas,~,Vi] = pca(X(training,:),1);
 P = (rand(m,d)-0.5)*sqrt(12);
 P = bsxfun(@plus,P*Vi,mu);
 
-lambda = sqrt(2*nthroot(m,d)./mean(Dxy(X(training,:),P)));
+Xl = fillLinear(X(training,:),mu,sigmas);
+gamma = sqrt(0.25*nthroot(m,d)./mean(Dxy(Xl,P)));
+
 
 switch(method)
     case 'GL'
-        Lambda = mean(lambda);
+        Gamma = mean(gamma);
     case 'VL'
-        Lambda = ones(1,m).*lambda;
+        Gamma = ones(1,m).*gamma;
     case 'GD'
-        Lambda = ones(1,d)*mean(lambda);
+        Gamma = ones(1,d)*mean(gamma);
     case 'VD'
-        Lambda = zeros(m,d);
+        Gamma = zeros(m,d);
         for j=1:m
-            Lambda(j,:) = ones(1,d)*lambda(j);
+            Gamma(j,:) = ones(1,d)*gamma(j);
         end
     case 'GC'
-        Lambda = eye(d)*mean(lambda);
+        Gamma = eye(d)*mean(gamma);
     case 'VC'
-        Lambda = zeros(d,d,m);
+        Gamma = zeros(d,d,m);
         for j=1:m
-            Lambda(:,:,j) = eye(d)*lambda(j);
+            Gamma(:,:,j) = eye(d)*gamma(j);
         end
 end
 
-theta = [P(:);Lambda(:);lnAlpha(:);b(:)];
+model.g_dim = length(Gamma(:));
+theta = [P(:);Gamma(:);lnAlpha(:);b(:)];
 
 f = @(params) GPz(params,model,X,Y,Psi,omega,training,[]);
 
@@ -89,25 +96,20 @@ if(heteroscedastic)
 
     theta = [theta;v(:);lnTau(:)];
     
-end
-
-if(learnPsi)
-    
-    if(method(2)=='C')
-        S = eye(d)/mean(lambda);
-    else
-        S = ones(1,d)/mean(lambda);
-    end            
-    
-    theta = [theta;S(:)];
+    last.v = v;
     
 end
 
+priors = ones(1,m)/m;
 [~,~,w,iSigma_w] = f(theta);
 
 last.theta = theta;
 last.w = w;
 last.iSigma_w = iSigma_w;
+last.priors = priors;
+last.P = P;
+
+
 
 
 best = last;
@@ -116,8 +118,6 @@ best.LL = -inf;
 
 model.last = last;
 model.best = best;
-
-model.learnPsi = learnPsi;
 
 
 end
