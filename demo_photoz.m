@@ -8,7 +8,6 @@ m = 100;                                % number of basis functions to use [requ
  
 method = 'VD';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
  
-joint = true;                           % jointly learn a prior linear mean-function [default=true]
  
 heteroscedastic = true;                 % learn a heteroscedastic noise process, set to false if only interested in point estimates [default=true]
  
@@ -31,9 +30,9 @@ csl_method = 'normal';                  % cost-sensitive learning option: [defau
                                         %       'normal':       no weights assigned, all samples are equally important
  
 binWidth = 0.1;                         % the width of the bin for 'balanced' cost-sensitive learning [default=range(output)/100]
-%%%%%%%%%%%%%% Start of script %%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%% Prepare data %%%%%%%%%%%%%% 
  
-dataPath = '../data/sdss_sample.csv';   % path to the data set, has to be in the following format m_1,m_2,..,m_k,e_1,e_2,...,e_k,z_spec
+dataPath = 'data/sdss_sample.csv';   % path to the data set, has to be in the following format m_1,m_2,..,m_k,e_1,e_2,...,e_k,z_spec
                                         % where m_i is the i-th magnitude, e_i is its associated uncertainty and z_spec is the spectroscopic redshift
                                         % [required]
 outPath = [];                           % if set to a path, the output will be saved to a csv file.
@@ -45,9 +44,6 @@ X(:,end) = [];
  
 [n,d] = size(X);
 filters = d/2;
-
-% select training, validation and testing sets from the data
-[training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
  
 % you can also select the size of each sample
 % [training,validation,testing] = sample(n,10000,10000,10000);
@@ -59,36 +55,34 @@ if(inputNoise)
     % treat the mag-errors as input noise variance
     Psi = X(:,filters+1:end).^2;
     X(:,filters+1:end) = [];
- 
-    % initialize the model
-    model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'joint',joint,'normalize',normalize,'Psi',Psi);
-    % train the model
-    model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts,'Psi',Psi); 
-    % use the model to generate predictions for the test set
-    [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model,'Psi',Psi(testing,:));
 else
     % treat the mag-errors as input additional inputs
     X(:,filters+1:end) = log(X(:,filters+1:end));
- 
-    % initialize the model
-    model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'joint',joint,'normalize',normalize);
-    % train the model
-    model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts); 
-    % use the model to generate predictions for the test set
-    [mu,sigma,nu,beta_i,gamma] = predict(X(testing,:),model);
+    Psi = [];
 end
- 
+
+% select training, validation and testing sets from the data
+[training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
+
+%%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
+
+% initialize the model
+model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'normalize',normalize,'Psi',Psi);
+% train the model
+model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts,'Psi',Psi); 
+
+
+%%%%%%%%%%%%%% Compute Metrics %%%%%%%%%%%%%%
+
+% use the model to generate predictions for the test set
+[mu,sigma,nu,beta_i,gamma] = predict(X,model,'Psi',Psi,'selection',testing);
+
 % mu     = the best point estimate
 % nu     = variance due to data density
 % beta_i = variance due to output noise
 % gamma  = variance due to input noise
 % sigma  = nu+beta_i+gamma
- 
-% compute any metrics here, e.g. RMSE
- 
- 
-%%%%%%%%%%%%%% Display Results %%%%%%%%%%%%%%%% 
- 
+
 % compute metrics 
  
 %root mean squared error, i.e. sqrt(mean(errors^2))
@@ -109,6 +103,8 @@ bias = metrics(Y(testing),mu,sigma,@(y,mu,sigma) y-mu);
 % print metrics for the entire data
 fprintf('RMSE\t\tMLL\t\tFR15\t\tFR05\t\tBIAS\n')
 fprintf('%f\t%f\t%f\t%f\t%f\n',rmse(end),mll(end),fr15(end),fr05(end),bias(end))
+ 
+%%%%%%%%%%%%%% Display Results %%%%%%%%%%%%%%%% 
  
 % reduce the sample for efficient plotting
 [x,y,color,counts]=reduce(Y(testing),mu,sigma,200);

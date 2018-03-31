@@ -49,10 +49,10 @@ else
     Psi = [];
 end
 
-%%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
-
 % split data into training, validation and testing
 [training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
+
+%%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
 
 % initialize the model
 model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'training',training,'Psi',Psi);

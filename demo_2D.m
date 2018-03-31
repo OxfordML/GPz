@@ -4,7 +4,7 @@ addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
  
-m = 20;                                 % number of basis functions to use [required]
+m = 50;                                 % number of basis functions to use [required]
  
 method = 'VD';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
  
@@ -44,7 +44,7 @@ w = [-9;6;3];
 Y = PHI*w+randn(n,1)*0.01;
 
 if(inputNoise)
-    E = 0.5; % desired mean of the input noise variance
+    E = 0.5;  % desired mean of the input noise variance
     V = 0.25; % desired variance of the input noise variance
     
     % The parameters of a gamma distribution with the desired mean and variance
@@ -77,10 +77,10 @@ if(percentage>0)
     Xn(r(psize+1:2*psize),2) = nan; % remove the second variable from the other half the selected sample
 end
 
-%%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
-
 % split data into training, validation and testing
 [training,validation,testing] = sample(n,trainSplit,validSplit,testSplit);
+
+%%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
 
 % initialize the model
 model = init(Xn,Y,method,m,'heteroscedastic',heteroscedastic,'normalize',normalize,'training',training,'Psi',Psi);
@@ -94,7 +94,7 @@ model = train(model,Xn,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',t
 [x,y] = meshgrid(linspace(min(X(:,1))-1,max(X(:,1))+1,100),linspace(min(X(:,2))-1,max(X(:,2))+1,100));
 Xs = [x(:) y(:)];
 
-[mu,sigma] = predict(Xs,model);
+mu = predict(Xs,model);
 
 % Visualize prediction
 figure;
@@ -127,6 +127,8 @@ title('Reference Model','interpreter','latex','FontSize',12);
 
 labels = ['x','y'];
 
+rmses = zeros(2,2);
+
 for o=1:2
     
     % create a test set with only variable 'o' observed
@@ -154,6 +156,13 @@ for o=1:2
     axis tight
     ax1 = gca;
 
+    % compute the error on the test set
+    Xs = nan(sum(testing),2);
+    Xs(:,o) = X(testing,o);
+    
+    mu = predict(Xs,model);
+    rmses(1,o) = sqrt(mean((Y(testing)-mu).^2));
+    
     % build a reference model trained only on the observed variable to compare
     
     if(isempty(Psi))
@@ -188,6 +197,11 @@ for o=1:2
     axis tight
     ax2 = gca;
     
+    % compute the error on the test set
+    
+    mu = predict(X(testing,o),model);
+    rmses(2,o) = sqrt(mean((Y(testing)-mu).^2));
+    
     % equlize axes
     YLim = [min(ax1.YLim(1),ax2.YLim(1)) max(ax1.YLim(2),ax2.YLim(2))];
     
@@ -198,25 +212,6 @@ for o=1:2
     
 end
 
-%%%%%%%%%%%%%% Compute Metrics %%%%%%%%%%%%%%
+%%%%%%%%%%%%%% Display Metrics %%%%%%%%%%%%%%
 
-% use the model to generate predictions for the test set
-[mu,sigma] = predict(X,model,'Psi',Psi,'selection',testing);
-
-% mu     = the best point estimate
-% nu     = variance due to data density
-% beta_i = variance due to output noise
-% gamma  = variance due to input noise
-% sigma  = nu+beta_i+gamma
-
-error = Y(testing)-mu;
-
-%root mean squared error, i.e. sqrt(mean(errors^2))
-rmse = sqrt(mean(error.^2));
- 
-% mean log likelihood mean(-0.5*errors^2/sigma -0.5*log(sigma)-0.5*log(2*pi))
-mll = mean(-0.5*(error.^2)./sigma-0.5*log(sigma))-0.5*log(2*pi);
-
-fprintf('Scores on Test Set\n')
-fprintf('RMSE\t\tMLL\n')
-fprintf('%f\t%f\n',rmse(end),mll(end))
+fprintf('\t\t  RMSE on the test set\n\t\tMissing y\tMissing x\nPredicted\t%f\t%f\nReference\t%f\t%f\n',rmses(1,1),rmses(1,2),rmses(2,1),rmses(2,2))
