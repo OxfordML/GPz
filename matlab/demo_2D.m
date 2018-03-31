@@ -4,9 +4,9 @@ addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
  
-m = 10;                                % number of basis functions to use [required]
+m = 20;                                 % number of basis functions to use [required]
  
-method = 'VC';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
+method = 'VD';                          % select a method, options = GL, VL, GD, VD, GC and VC [required]
  
 heteroscedastic = true;                 % learn a heteroscedastic noise process, set to false if only interested in point estimates [default=true]
  
@@ -17,10 +17,10 @@ maxAttempts = 50;                       % maximum iterations to attempt if there
  
  
 trainSplit = 0.7;                       % percentage of data to use for training
-validSplit = 0.3;                       % percentage of data to use for validation
-testSplit  = 0;                       % percentage of data to use for testing
+validSplit = 0.15;                      % percentage of data to use for validation
+testSplit  = 0.15;                      % percentage of data to use for testing
 
-inputNoise = false;                     % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
 
 percentage = 0.5;                       % percentage of data with a missing variable
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
@@ -44,14 +44,16 @@ w = [-9;6;3];
 Y = PHI*w+randn(n,1)*0.01;
 
 if(inputNoise)
-    E = 0.1; % the mean of the input noise variance
-    V = 1; % the variance of the input noise variance
+    E = 0.5; % desired mean of the input noise variance
+    V = 0.25; % desired variance of the input noise variance
     
-    a = E^2/V;
-    b = E/V;
+    % The parameters of a gamma distribution with the desired mean and variance
+    a = E^2/V; b = E/V;
+    
+    % sample from the gamma distribution with mean=E and variance=V
     Psi = gamrnd(a,1/b,size(X));
     
-    Xn = X+randn(size(X)).*sqrt(Psi); % this is the noisy version of the input
+    Xn = X+randn(size(X)).*sqrt(Psi); % create a noisy input
     
     % concert to covariances when using GC or VC
     if(method(2)=='C') 
@@ -84,10 +86,9 @@ end
 model = init(Xn,Y,method,m,'heteroscedastic',heteroscedastic,'normalize',normalize,'training',training,'Psi',Psi);
 
 % train the model
-model = train(model,Xn,Y,'maxIter',maxIter,'maxAttempt',maxAttempt,'training',training,'validation',validation,'Psi',Psi);
+model = train(model,Xn,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
 
-
-%%%%%%%%%%%%%% Visualize Results %%%%%%%%%%%%%%
+%%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 
 % create 2D test data
 [x,y] = meshgrid(linspace(min(X(:,1))-1,max(X(:,1))+1,100),linspace(min(X(:,2))-1,max(X(:,2))+1,100));
@@ -116,11 +117,7 @@ PHI = [mvnpdf(Xs,mean1,Sigma1) mvnpdf(Xs,mean2,Sigma2) mvnpdf(Xs,mean3,Sigma3)];
 truth = PHI*w;
 
 surf(x,y,reshape(truth,size(x)));colormap jet;axis tight;
-position = get(gcf,'Position');
-position(1) = 0;
-position(3) = 1200;
-position(4) = 650;
-set(gcf,'Position',position);
+
 xlabel('$x$','interpreter','latex','FontSize',12);
 ylabel('$y$','interpreter','latex','FontSize',12);
 zlabel('$z$','interpreter','latex','FontSize',12);
@@ -159,7 +156,9 @@ for o=1:2
 
     % build a reference model trained only on the observed variable to compare
     
-    if(method(2)=='C')
+    if(isempty(Psi))
+        Psi_oo = [];
+    elseif(method(2)=='C')
         Psi_oo = squeeze(Psi(o,o,:));
     else
         Psi_oo = Psi(:,o);
@@ -169,7 +168,7 @@ for o=1:2
     
     % build and train the reference model only on the observed variable
     ref_model = init(Xn(:,o),Y,method,m,'heteroscedastic',heteroscedastic,'normalize',normalize,'training',training&~removed,'Psi',Psi_oo);
-    ref_model = train(ref_model,Xn(:,o),Y,'maxIter',maxIter,'maxAttempt',maxAttempt,'training',training&~removed,'validation',validation&~removed,'Psi',Psi_oo);
+    ref_model = train(ref_model,Xn(:,o),Y,'maxIter',maxIter,'maxAttempts',maxAttempts,'training',training&~removed,'validation',validation&~removed,'Psi',Psi_oo);
 
     % generate predictions using the reference model
     [mu,sigma] = predict(Xo,ref_model);
@@ -199,4 +198,25 @@ for o=1:2
     
 end
 
+%%%%%%%%%%%%%% Compute Metrics %%%%%%%%%%%%%%
 
+% use the model to generate predictions for the test set
+[mu,sigma] = predict(X,model,'Psi',Psi,'selection',testing);
+
+% mu     = the best point estimate
+% nu     = variance due to data density
+% beta_i = variance due to output noise
+% gamma  = variance due to input noise
+% sigma  = nu+beta_i+gamma
+
+error = Y(testing)-mu;
+
+%root mean squared error, i.e. sqrt(mean(errors^2))
+rmse = sqrt(mean(error.^2));
+ 
+% mean log likelihood mean(-0.5*errors^2/sigma -0.5*log(sigma)-0.5*log(2*pi))
+mll = mean(-0.5*(error.^2)./sigma-0.5*log(sigma))-0.5*log(2*pi);
+
+fprintf('Scores on Test Set\n')
+fprintf('RMSE\t\tMLL\n')
+fprintf('%f\t%f\n',rmse(end),mll(end))

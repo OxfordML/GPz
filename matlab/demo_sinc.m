@@ -16,11 +16,11 @@ maxIter = 500;                          % maximum number of iterations [default=
 maxAttempts = 50;                       % maximum iterations to attempt if there is no progress on the validation set [default=infinity]
  
  
-trainSplit = 0.2;                       % percentage of data to use for training
-validSplit = 0.2;                       % percentage of data to use for validation
-testSplit  = 0.6;                       % percentage of data to use for testing
+trainSplit = 0.7;                       % percentage of data to use for training
+validSplit = 0.15;                       % percentage of data to use for validation
+testSplit  = 0.15;                       % percentage of data to use for testing
 
-inputNoise = false;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
 
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
 
@@ -59,17 +59,6 @@ model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedasti
 
 % train the model
 model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
-    
-% use the model to generate predictions for the test set
-
-[mu,sigma,nu,beta_i,gamma] = predict(X,model,'Psi',Psi,'selection',testing);
-
-
-% mu     = the best point estimate
-% nu     = variance due to data density
-% beta_i = variance due to output noise
-% gamma  = variance due to input noise
-% sigma  = nu+beta_i+gamma
 
 %%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 Xs = linspace(-15,15,1000)';
@@ -106,3 +95,28 @@ legend([h1 h2 h3], {'$\pm 2\sigma(x)$','$\mu(x)$','$\mbox{sinc}(x)$'},'FontSize'
 
 xlabel('$x$','interpreter','latex','FontSize',30);
 ylabel('$y$','interpreter','latex','FontSize',30);
+
+%%%%%%%%%%%%%% Compute Metrics %%%%%%%%%%%%%%
+
+% use the model to generate predictions for the test set
+[mu,sigma] = predict(X,model,'Psi',Psi,'selection',testing);
+
+
+% mu     = the best point estimate
+% nu     = variance due to data density
+% beta_i = variance due to output noise
+% gamma  = variance due to input noise
+% sigma  = nu+beta_i+gamma
+
+
+error = Y(testing)-mu;
+
+%root mean squared error, i.e. sqrt(mean(errors^2))
+rmse = sqrt(mean(error.^2));
+ 
+% mean log likelihood mean(-0.5*errors^2/sigma -0.5*log(sigma)-0.5*log(2*pi))
+mll = mean(-0.5*(error.^2)./sigma-0.5*log(sigma))-0.5*log(2*pi);
+
+fprintf('Scores on Test Set\n')
+fprintf('RMSE\t\tMLL\n')
+fprintf('%f\t%f\n',rmse(end),mll(end))

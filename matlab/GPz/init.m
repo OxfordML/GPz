@@ -59,7 +59,7 @@ P = (rand(m,d)-0.5)*sqrt(12);
 P = bsxfun(@plus,P*Vi,mu);
 
 Xl = fillLinear(X(training,:),mu,sigmas);
-gamma = sqrt(0.25*nthroot(m,d)./mean(Dxy(Xl,P)));
+gamma = sqrt(nthroot(m,d)./mean(Dxy(Xl,P)));
 
 
 switch(method)
