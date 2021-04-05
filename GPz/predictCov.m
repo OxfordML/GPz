@@ -268,7 +268,9 @@ function [mu,nu,beta_i,gamma,PHI] = predictNoisyMissing(X,Psi,Gamma,w,v,b,P,iSig
             R(:,:,i) = Sigma(o,o,i)\Sigma(o,~o,i);
             T = [eye(do);R(:,:,i)'];
 
-            Psi_hat(:,:,i,id) = T*Psi(o,o,id)*T';
+            [~,unshuffle] = sort([find(o) find(~o)]);
+
+            Psi_hat(unshuffle,unshuffle,i,id) = T*Psi(o,o,id)*T';
             Psi_hat(~o,~o,i,id) = Psi_hat(~o,~o,i,id)+Sigma(~o,~o,i)-Sigma(~o,o,i)*R(:,:,i);
 
             X_hat(id,~o,i) = bsxfun(@plus,bsxfun(@minus,X(id,o),P(i,o))*R(:,:,i),P(i,~o));
