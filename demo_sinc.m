@@ -1,6 +1,5 @@
 rng(1); % fix random seed
 addpath GPz/ % path to GPz
-addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
  
@@ -17,10 +16,10 @@ maxAttempts = 50;                       % maximum iterations to attempt if there
  
  
 trainSplit = 0.7;                       % percentage of data to use for training
-validSplit = 0.15;                       % percentage of data to use for validation
-testSplit  = 0.15;                       % percentage of data to use for testing
+validSplit = 0.15;                      % percentage of data to use for validation
+testSplit  = 0.15;                      % percentage of data to use for testing
 
-inputNoise = true;                      % false = use mag errors as additional inputs, true = use mag errors as additional input noise
+inputNoise = true;                      % true = add simulated input noise and supply its variance to GPz; false = noise-free inputs
 
 %%%%%%%%%%%%%% Create dataset %%%%%%%%%%%%%%
 
@@ -58,14 +57,15 @@ end
 model = init(X,Y,method,m,'normalize',normalize,'heteroscedastic',heteroscedastic,'training',training,'Psi',Psi);
 
 % train the model
-model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
+model = train(model,X,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'testing',testing,'Psi',Psi);
 
 %%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 Xs = linspace(-15,15,1000)';
 
 [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model); % generate predictions, note that this will use the model with the best score on the validation set
-% [mu,sigma,nu,beta_i,gamma,PHI,w,iSigma_w] = predict(Xs,model,'whichSet','last'); % this will use the model with the best score on the training set
+% Set the predict option 'whichSet' to 'last' to use the final optimization iterate.
 
+figure; % keep predictions separate from the training progress figure
 hold on;
 
 f = [mu+2*sqrt(sigma); flip(mu-2*sqrt(sigma))];
@@ -100,14 +100,6 @@ ylabel('$y$','interpreter','latex','FontSize',30);
 
 % use the model to generate predictions for the test set
 [mu,sigma] = predict(X,model,'Psi',Psi,'selection',testing);
-
-
-% mu     = the best point estimate
-% nu     = variance due to data density
-% beta_i = variance due to output noise
-% gamma  = variance due to input noise
-% sigma  = nu+beta_i+gamma
-
 
 error = Y(testing)-mu;
 

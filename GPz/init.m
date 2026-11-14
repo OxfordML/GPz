@@ -20,8 +20,8 @@ model.method = method;
 model.heteroscedastic = heteroscedastic;
 
 if(normalize)
-    Xz = X;
-    missing = isnan(X);
+    Xz = X(training,:);
+    missing = isnan(Xz);
     Xz(missing) = 0;
 
     counts = sum(~missing);

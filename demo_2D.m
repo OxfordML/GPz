@@ -1,6 +1,8 @@
+restoredefaultpath
+rehash toolboxcache
+
 rng(1); % fix random seed
 addpath GPz/ % path to GPz
-addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
  
@@ -86,7 +88,7 @@ end
 model = init(Xn,Y,method,m,'heteroscedastic',heteroscedastic,'normalize',normalize,'training',training,'Psi',Psi);
 
 % train the model
-model = train(model,Xn,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'Psi',Psi);
+model = train(model,Xn,Y,'maxIter',maxIter,'maxAttempt',maxAttempts,'training',training,'validation',validation,'testing',testing,'Psi',Psi);
 
 %%%%%%%%%%%%%% Display %%%%%%%%%%%%%%
 
@@ -97,7 +99,7 @@ Xs = [x(:) y(:)];
 mu = predict(Xs,model);
 
 % Visualize prediction
-figure;
+fig = figure;
 subplot(2,3,1)
 surf(x,y,reshape(mu,size(x)));colormap jet;axis tight;
 hold on;
@@ -177,12 +179,13 @@ for o=1:2
     
     % build and train the reference model only on the observed variable
     ref_model = init(Xn(:,o),Y,method,m,'heteroscedastic',heteroscedastic,'normalize',normalize,'training',training&~removed,'Psi',Psi_oo);
-    ref_model = train(ref_model,Xn(:,o),Y,'maxIter',maxIter,'maxAttempts',maxAttempts,'training',training&~removed,'validation',validation&~removed,'Psi',Psi_oo);
+    ref_model = train(ref_model,Xn(:,o),Y,'maxIter',maxIter,'maxAttempts',maxAttempts,'training',training&~removed,'validation',validation&~removed,'testing',testing&~removed,'Psi',Psi_oo);
 
     % generate predictions using the reference model
     [mu,sigma] = predict(Xo,ref_model);
 
     % visualize the results
+    figure(fig); % return from the reference model's progress figure
     subplot(2,3,o+4);
     hold on;
     f = [mu+2*sqrt(sigma); flip(mu-2*sqrt(sigma))];
@@ -199,7 +202,7 @@ for o=1:2
     
     % compute the error on the test set
     
-    mu = predict(X(testing,o),model);
+    mu = predict(X(testing,o),ref_model);
     rmses(2,o) = sqrt(mean((Y(testing)-mu).^2));
     
     % equlize axes

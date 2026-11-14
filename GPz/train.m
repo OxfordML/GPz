@@ -22,10 +22,17 @@ m = model.m;
 k = model.k;
 g_dim = model.g_dim;
 
-pnames =    { 'maxIter' 'maxAttempts' 'omega'     'training'     'validation'   'Psi'};
-defaults =  {  200      inf         ones(n,1)   true(n,1)      []   []};
+pnames =    { 'maxIter' 'maxAttempts' 'omega'     'training'     'validation'   'Psi' 'testing'};
+defaults =  {  200      inf         ones(n,1)   true(n,1)      []   []    []};
 
-[maxIter,maxAttempts,omega,training,validation,Psi]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
+[maxIter,maxAttempts,omega,training,validation,Psi,testing]  = internal.stats.parseArgs(pnames, defaults, varargin{:});
+
+if(~any(validation(:)))
+    validation = [];
+end
+if(isempty(omega))
+    omega = ones(n,1);
+end
 
 Y = bsxfun(@minus,Y,muY);
 
@@ -39,16 +46,18 @@ end
 
 f = @(params) GPz(params,model,X,Y,Psi,omega,training,validation);
 
-options.method = 'lbfgs';
-options.display = 'off';
-options.maxIter = maxIter;
-options.MaxFunEvals = inf;
-options.outputFcn = @(theta,iterationType,i,funEvals,f,t,gtd,g,dir,optCond,varargin) callBack(theta,iterationType,i,funEvals,f,t,gtd,g,dir,optCond,maxIter,maxAttempts,isempty(validation),varargin);
+% Test scores are evaluated only by the progress callback, not the optimizer.
+testFun = [];
+if(any(testing(:)))
+    testFun = @(theta) testMetrics(theta,f,model,X,Y,Psi,omega,testing);
+end
 
-theta = minFunc(f,theta,options);
-
-% options = optimoptions('fminunc','MaxIter',maxIter,'Algorithm','quasi-newton','GradObj','on','OutputFcn', @(theta,optimValues,state) outputFun(theta,optimValues,state,maxAttempts,isempty(validation)));
-% theta = fminunc(f,theta,options);
+options = optimoptions('fminunc','Algorithm','quasi-newton', ...
+    'HessianApproximation',{'lbfgs',100},'SpecifyObjectiveGradient',true, ...
+    'Display','off','MaxIterations',maxIter,'MaxFunctionEvaluations',inf, ...
+    'OptimalityTolerance',1e-5,'StepTolerance',1e-9,'FunctionTolerance',1e-9, ...
+    'OutputFcn',@(theta,optimValues,state) outputFun(theta,optimValues,state,maxAttempts,isempty(validation),f,maxIter,testFun));
+theta = fminunc(f,theta,options);
 
 [~,~,w,iSigma_w] = f(theta);
 
@@ -69,6 +78,7 @@ theta = best_theta;
 [~,~,w,iSigma_w] = f(theta);
 
 model.best.theta = theta;
+model.best.LL = best_valid;
 model.best.w = w;
 model.best.iSigma_w = iSigma_w;
 model.best.priors = getPrior(X,Psi,theta,model,training);
@@ -79,4 +89,19 @@ if(model.heteroscedastic)
     model.best.v = v;
 end
 
+end
+
+function [testRMSE,testLL] = testMetrics(theta,f,model,X,Y,Psi,omega,testing)
+    
+    [~,~,w] = f(theta);
+    [PHI,~,lnBeta_i] = getPHI(X,Psi,theta,model,testing);
+    
+    beta = exp(-lnBeta_i);
+    delta = PHI*w-Y(testing,:);
+    
+    n = sum(testing);
+    k = model.k;
+    
+    testRMSE = sqrt(sum(sum(bsxfun(@times,delta.^2,omega(testing))))/(n*k));
+    testLL = sum(sum(bsxfun(@times,-0.5*beta.*delta.^2+0.5*log(beta),omega(testing,:))))/(n*k)-0.5*log(2*pi);
 end

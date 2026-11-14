@@ -1,6 +1,5 @@
 rng(1); % fix random seed
 addpath GPz/ % path to GPz
-addpath(genpath('minFunc_2012/'))       % path to minfunc
  
 %%%%%%%%%%%%%% Model options %%%%%%%%%%%%%%%%
  
@@ -45,11 +44,18 @@ X(:,end) = [];
 [n,d] = size(X);
 filters = d/2;
  
-% you can also select the size of each sample
-% [training,validation,testing] = sample(n,10000,10000,10000);
+% sample also accepts absolute counts for the training, validation and testing sets.
  
 % get the weights for cost-sensitive learning
-omega = getOmega(Y,csl_method,binWidth); 
+% Split before estimating weights so held-out target distributions cannot
+% affect training or validation weights.
+[training,validation,testing] = sample(n,trainSplit,validSplit,testSplit);
+omega = ones(n,1);
+for selection = {training,validation,testing}
+    if(any(selection{1}))
+        omega(selection{1}) = getOmega(Y(selection{1}),csl_method,binWidth);
+    end
+end
 
 if(inputNoise)
     % treat the mag-errors as input noise variance
@@ -61,15 +67,12 @@ else
     Psi = [];
 end
 
-% select training, validation and testing sets from the data
-[training,validation,testing] = sample(n,trainSplit,validSplit,testSplit); 
-
 %%%%%%%%%%%%%% Fit the model %%%%%%%%%%%%%%
 
 % initialize the model
 model = init(X,Y,method,m,'omega',omega,'training',training,'heteroscedastic',heteroscedastic,'normalize',normalize,'Psi',Psi);
 % train the model
-model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'maxIter',maxIter,'maxAttempts',maxAttempts,'Psi',Psi); 
+model = train(model,X,Y,'omega',omega,'training',training,'validation',validation,'testing',testing,'maxIter',maxIter,'maxAttempts',maxAttempts,'Psi',Psi);
 
 
 %%%%%%%%%%%%%% Compute Metrics %%%%%%%%%%%%%%
